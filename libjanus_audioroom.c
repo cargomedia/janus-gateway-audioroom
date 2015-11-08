@@ -366,19 +366,19 @@ record_file =	/path/to/recording.wav (where to save the recording)
  * \ref plugins
  */
 
-#include "plugin.h"
+#include "plugins/plugin.h"
 
 #include <jansson.h>
 #include <opus/opus.h>
 #include <sys/time.h>
 
-#include "../debug.h"
-#include "../apierror.h"
-#include "../config.h"
-#include "../mutex.h"
-#include "../rtp.h"
-#include "../rtcp.h"
-#include "../utils.h"
+#include "debug.h"
+#include "apierror.h"
+#include "config.h"
+#include "mutex.h"
+#include "rtp.h"
+#include "rtcp.h"
+#include "utils.h"
 
 
 /* Plugin information */
