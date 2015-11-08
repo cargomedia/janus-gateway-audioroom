@@ -385,7 +385,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 #define CM_AUDIOBRIDGE_VERSION			8
 #define CM_AUDIOBRIDGE_VERSION_STRING	"0.0.8"
 #define CM_AUDIOBRIDGE_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
-#define CM_AUDIOBRIDGE_NAME				"JANUS AudioBridge plugin"
+#define CM_AUDIOBRIDGE_NAME				"JANUS CM audio plugin"
 #define CM_AUDIOBRIDGE_AUTHOR			"Meetecho s.r.l."
 #define CM_AUDIOBRIDGE_PACKAGE			"janus.plugin.audiobridge"
 
