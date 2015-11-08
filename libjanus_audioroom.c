@@ -481,7 +481,7 @@ void cm_audioroom_message_free(cm_audioroom_message *msg) {
 
 
 typedef struct cm_audioroom_room {
-	guint64 room_id;			/* Unique room ID */
+	gchar *room_id;			/* Unique room ID */
 	gchar *room_name;			/* Room description */
 	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
 	gchar *room_pin;			/* Password needed to join this room, if any */
@@ -685,7 +685,11 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 	if(config != NULL)
 		janus_config_print(config);
 
-	rooms = g_hash_table_new(NULL, NULL);
+	rooms = g_hash_table_new_full(
+		g_str_hash,	 /* Hashing func */
+		g_str_equal, /* Key comparator */
+		g_free,			 /* Key destructor */
+		NULL);			 /* Value destructor, we don't want this done automatically */
 	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new(NULL, NULL);
 	janus_mutex_init(&sessions_mutex);
@@ -708,7 +712,7 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 	g_hash_table_iter_init(&iter, rooms);
 	while (g_hash_table_iter_next(&iter, NULL, &value)) {
 		cm_audioroom_room *ar = value;
-		JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu32" (%s be recorded)\n",
+		JANUS_LOG(LOG_VERB, "  ::: [%s][%s] %"SCNu32" (%s be recorded)\n",
 			ar->room_id, ar->room_name, ar->sampling_rate, ar->record ? "will" : "will NOT");
 	}
 	janus_mutex_unlock(&rooms_mutex);
@@ -854,7 +858,7 @@ char *cm_audioroom_query_session(janus_plugin_session *handle) {
 	json_object_set_new(info, "state", json_string(participant && participant->room ? "inroom" : "idle"));
 	if(participant) {
 		cm_audioroom_room *room = participant->room;
-		json_object_set_new(info, "room", room ? json_integer(room->room_id) : NULL);
+		json_object_set_new(info, "room", room ? json_string(room->room_id) : NULL);
 		json_object_set_new(info, "id", json_integer(participant->user_id));
 		if(participant->display)
 			json_object_set_new(info, "display", json_string(participant->display));
@@ -989,31 +993,31 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_snprintf(error_cause, 512, "Invalid value (record_file should be a string)");
 			goto error;
 		}
-		guint64 room_id = 0;
 		json_t *room = json_object_get(root, "room");
-		if(room && (!json_is_integer(room) || json_integer_value(room) < 0)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
-			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
+		if(!room) {
+			JANUS_LOG(LOG_ERR, "Missing element (room)\n");
+			error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
+			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
-		} else {
-			room_id = json_integer_value(room);
-			if(room_id == 0) {
-				JANUS_LOG(LOG_WARN, "Desired room ID is 0, which is not allowed... picking random ID instead\n");
-			}
 		}
+		if(!json_is_string(room)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
+			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
+			goto error;
+		}
+		const gchar *room_id = json_string_value(room);
 		janus_mutex_lock(&rooms_mutex);
-		if(room_id > 0) {
-			/* Let's make sure the room doesn't exist already */
-			if(g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id)) != NULL) {
-				/* It does... */
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Room %"SCNu64" already exists!\n", room_id);
-				error_code = CM_AUDIOROOM_ERROR_ROOM_EXISTS;
-				g_snprintf(error_cause, 512, "Room %"SCNu64" already exists", room_id);
-				goto error;
-			}
+		/* Let's make sure the room doesn't exist already */
+		if(g_hash_table_lookup(rooms, room_id) != NULL) {
+			/* It does... */
+			janus_mutex_unlock(&rooms_mutex);
+			JANUS_LOG(LOG_ERR, "Room %s already exists!\n", room_id);
+			error_code = CM_AUDIOROOM_ERROR_ROOM_EXISTS;
+			g_snprintf(error_cause, 512, "Room %s already exists", room_id);
+			goto error;
 		}
+
 		/* Create the audio bridge room */
 		cm_audioroom_room *audioroom = g_malloc0(sizeof(cm_audioroom_room));
 		if(audioroom == NULL) {
@@ -1023,23 +1027,13 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_snprintf(error_cause, 512, "Memory error");
 			goto error;
 		}
-		/* Generate a random ID */
-		if(room_id == 0) {
-			while(room_id == 0) {
-				room_id = g_random_int();
-				if(g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id)) != NULL) {
-					/* Room ID already taken, try another one */
-					room_id = 0;
-				}
-			}
-		}
-		audioroom->room_id = room_id;
+		audioroom->room_id = g_strdup(room_id);
 		char *description = NULL;
 		if(desc != NULL && strlen(json_string_value(desc)) > 0) {
 			description = g_strdup(json_string_value(desc));
 		} else {
 			char roomname[255];
-			g_snprintf(roomname, 255, "Room %"SCNu64"", audioroom->room_id);
+			g_snprintf(roomname, 255, "Room %s", audioroom->room_id);
 			description = g_strdup(roomname);
 		}
 		if(description == NULL) {
@@ -1084,8 +1078,8 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		audioroom->participants = g_hash_table_new(NULL, NULL);
 		audioroom->destroyed = 0;
 		janus_mutex_init(&audioroom->mutex);
-		g_hash_table_insert(rooms, GUINT_TO_POINTER(audioroom->room_id), audioroom);
-		JANUS_LOG(LOG_VERB, "Created audioroom: %"SCNu64" (%s, %s, secret: %s, pin: %s)\n",
+		g_hash_table_insert(rooms, g_strdup(audioroom->room_id), audioroom);
+		JANUS_LOG(LOG_VERB, "Created audioroom: %s (%s, %s, secret: %s, pin: %s)\n",
 			audioroom->room_id, audioroom->room_name,
 			audioroom->is_private ? "private" : "public",
 			audioroom->room_secret ? audioroom->room_secret : "no secret",
@@ -1098,6 +1092,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			JANUS_LOG(LOG_ERR, "Got error %d (%s) trying to launch the mixer thread...\n", error->code, error->message ? error->message : "??");
 			error_code = CM_AUDIOROOM_ERROR_UNKNOWN_ERROR;
 			g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the mixer thread", error->code, error->message ? error->message : "??");
+			g_free(audioroom->room_id);
 			g_free(audioroom->room_name);
 			g_free(audioroom->room_secret);
 			g_free(audioroom->record_file);
@@ -1105,7 +1100,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_free(audioroom);
 			goto error;
 		} else {
-			g_hash_table_insert(rooms, GUINT_TO_POINTER(audioroom->room_id), audioroom);
+			g_hash_table_insert(rooms, g_strdup(audioroom->room_id), audioroom);
 		}
 		/* Show updated rooms list */
 		GHashTableIter iter;
@@ -1113,14 +1108,14 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		g_hash_table_iter_init(&iter, rooms);
 		while (g_hash_table_iter_next(&iter, NULL, &value)) {
 			cm_audioroom_room *ar = value;
-			JANUS_LOG(LOG_VERB, "  ::: [%"SCNu64"][%s] %"SCNu32" (%s be recorded)\n",
+			JANUS_LOG(LOG_VERB, "  ::: [%s][%s] %"SCNu32" (%s be recorded)\n",
 				ar->room_id, ar->room_name, ar->sampling_rate, ar->record ? "will" : "will NOT");
 		}
 		janus_mutex_unlock(&rooms_mutex);
 		/* Send info back */
 		response = json_object();
 		json_object_set_new(response, "audioroom", json_string("created"));
-		json_object_set_new(response, "room", json_integer(audioroom->room_id));
+		json_object_set_new(response, "room", json_string(audioroom->room_id));
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing audioroom room\n");
@@ -1131,20 +1126,20 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
 		}
-		if(!json_is_integer(room) || json_integer_value(room) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
+		if(!json_is_string(room)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
 			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
+			g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
 			goto error;
 		}
-		guint64 room_id = json_integer_value(room);
+		const gchar *room_id = json_string_value(room);
 		janus_mutex_lock(&rooms_mutex);
-		cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+		cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, room_id);
 		if(audioroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id);
 			error_code = CM_AUDIOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id);
 			goto error;
 		}
 		if(audioroom->room_secret) {
@@ -1257,44 +1252,50 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
 		}
-		if(!json_is_integer(room) || json_integer_value(room) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
+		if(!json_is_string(room)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
 			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
+			g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
 			goto error;
 		}
-		guint64 room_id = json_integer_value(room);
+		const gchar *room_id = json_string_value(room);
 		janus_mutex_lock(&rooms_mutex);
-		gboolean room_exists = g_hash_table_contains(rooms, GUINT_TO_POINTER(room_id));
+		gboolean room_exists = g_hash_table_contains(rooms, room_id);
 		janus_mutex_unlock(&rooms_mutex);
 		response = json_object();
 		json_object_set_new(response, "audioroom", json_string("success"));
-		json_object_set_new(response, "room", json_integer(room_id));
+		json_object_set_new(response, "room", json_string(room_id));
 		json_object_set_new(response, "exists", json_string(room_exists ? "true" : "false"));
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "listparticipants")) {
 		/* List all participants in a room */
 		json_t *room = json_object_get(root, "room");
-		if(!room || !json_is_integer(room) || json_integer_value(room) < 0) {
-			JANUS_LOG(LOG_ERR, "Invalid request, room number must be included in request and must be a positive integer\n");
+		if(!room) {
+			JANUS_LOG(LOG_ERR, "Missing element (room)\n");
 			error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
 			g_snprintf(error_cause, 512, "Missing element (room)");
 			goto error;
 		}
-		guint64 room_id = json_integer_value(room);
+		if(!json_is_string(room)) {
+			JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
+			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
+			g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
+			goto error;
+		}
+		const gchar *room_id = json_string_value(room);
 		janus_mutex_lock(&rooms_mutex);
-		cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+		cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, room_id);
 		janus_mutex_unlock(&rooms_mutex);
 		if(audioroom == NULL) {
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id);
 			error_code = CM_AUDIOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id);
 			goto error;
 		}
 		if(audioroom->destroyed) {
-			JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id);
 			error_code = CM_AUDIOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+			g_snprintf(error_cause, 512, "No such room (%s)", room_id);
 			goto error;
 		}
 		/* Return a list of all participants */
@@ -1315,7 +1316,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		janus_mutex_unlock(&audioroom->mutex);
 		response = json_object();
 		json_object_set_new(response, "audioroom", json_string("participants"));
-		json_object_set_new(response, "room", json_integer(room_id));
+		json_object_set_new(response, "room", json_string(room_id));
 		json_object_set_new(response, "participants", list);
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "resetdecoder")) {
@@ -1536,7 +1537,7 @@ void cm_audioroom_hangup_media(janus_plugin_session *handle) {
 		janus_mutex_lock(&audioroom->mutex);
 		json_t *event = json_object();
 		json_object_set_new(event, "audioroom", json_string("event"));
-		json_object_set_new(event, "room", json_integer(audioroom->room_id));
+		json_object_set_new(event, "room", json_string(audioroom->room_id));
 		json_object_set_new(event, "leaving", json_integer(participant->user_id));
 		char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
@@ -1661,20 +1662,20 @@ static void *cm_audioroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing element (room)");
 				goto error;
 			}
-			if(!json_is_integer(room) || json_integer_value(room) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
+			if(!json_is_string(room)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
 				error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
+				g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
 				goto error;
 			}
-			guint64 room_id = json_integer_value(room);
+			const gchar *room_id = json_string_value(room);
 			janus_mutex_lock(&rooms_mutex);
-			cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+			cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, room_id);
 			if(audioroom == NULL) {
 				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+				JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id);
 				error_code = CM_AUDIOROOM_ERROR_NO_SUCH_ROOM;
-				g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+				g_snprintf(error_cause, 512, "No such room (%s)", room_id);
 				goto error;
 			}
 			if(audioroom->room_pin) {
@@ -1872,7 +1873,7 @@ static void *cm_audioroom_handler(void *data) {
 			/* Notify the other participants */
 			json_t *newuser = json_object();
 			json_object_set_new(newuser, "audioroom", json_string("joined"));
-			json_object_set_new(newuser, "room", json_integer(audioroom->room_id));
+			json_object_set_new(newuser, "room", json_string(audioroom->room_id));
 			json_t *newuserlist = json_array();
 			json_t *pl = json_object();
 			json_object_set_new(pl, "id", json_integer(participant->user_id));
@@ -1913,7 +1914,7 @@ static void *cm_audioroom_handler(void *data) {
 			}
 			event = json_object();
 			json_object_set_new(event, "audioroom", json_string("joined"));
-			json_object_set_new(event, "room", json_integer(audioroom->room_id));
+			json_object_set_new(event, "room", json_string(audioroom->room_id));
 			json_object_set_new(event, "id", json_integer(user_id));
 			json_object_set_new(event, "participants", list);
 			janus_mutex_unlock(&audioroom->mutex);
@@ -1955,7 +1956,7 @@ static void *cm_audioroom_handler(void *data) {
 			}
 			if(muted) {
 				participant->muted = json_is_true(muted);
-				JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %"SCNu64", user %"SCNu64")\n", participant->muted ? "true" : "false", participant->room->room_id, participant->user_id);
+				JANUS_LOG(LOG_VERB, "Setting muted property: %s (room %s, user %"SCNu64")\n", participant->muted ? "true" : "false", participant->room->room_id, participant->user_id);
 				if(participant->muted) {
 					/* Clear the queued packets waiting to be handled */
 					janus_mutex_lock(&participant->qmutex);
@@ -1986,7 +1987,7 @@ static void *cm_audioroom_handler(void *data) {
 				json_array_append_new(list, pl);
 				json_t *pub = json_object();
 				json_object_set_new(pub, "audioroom", json_string("event"));
-				json_object_set_new(pub, "room", json_integer(participant->room->room_id));
+				json_object_set_new(pub, "room", json_string(participant->room->room_id));
 				json_object_set_new(pub, "participants", list);
 				char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(pub);
@@ -2008,7 +2009,7 @@ static void *cm_audioroom_handler(void *data) {
 			/* Done */
 			event = json_object();
 			json_object_set_new(event, "audioroom", json_string("event"));
-			json_object_set_new(event, "room", json_integer(participant->room->room_id));
+			json_object_set_new(event, "room", json_string(participant->room->room_id));
 			json_object_set_new(event, "result", json_string("ok"));
 		} else if(!strcasecmp(request_text, "changeroom")) {
 			/* The participant wants to leave the current room and join another one without reconnecting (e.g., a sidebar) */
@@ -2026,20 +2027,20 @@ static void *cm_audioroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "Missing element (room)");
 				goto error;
 			}
-			if(!json_is_integer(room) || json_integer_value(room) < 0) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room should be a positive integer)\n");
+			if(!json_is_string(room)) {
+				JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
 				error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (room should be a positive integer)");
+				g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
 				goto error;
 			}
-			guint64 room_id = json_integer_value(room);
+			const gchar *room_id = json_string_value(room);
 			janus_mutex_lock(&rooms_mutex);
-			cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, GUINT_TO_POINTER(room_id));
+			cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, room_id);
 			if(audioroom == NULL) {
 				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "No such room (%"SCNu64")\n", room_id);
+				JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id);
 				error_code = CM_AUDIOROOM_ERROR_NO_SUCH_ROOM;
-				g_snprintf(error_cause, 512, "No such room (%"SCNu64")", room_id);
+				g_snprintf(error_cause, 512, "No such room (%s)", room_id);
 				goto error;
 			}
 			if(audioroom->room_pin) {
@@ -2125,7 +2126,7 @@ static void *cm_audioroom_handler(void *data) {
 					}
 				}
 			}
-			JANUS_LOG(LOG_VERB, "  -- Participant ID in new room %"SCNu64": %"SCNu64"\n", room_id, user_id);
+			JANUS_LOG(LOG_VERB, "  -- Participant ID in new room %s: %"SCNu64"\n", room_id, user_id);
 			participant->prebuffering = TRUE;
 			/* Is the sampling rate of the new room the same as the one in the old room, or should we update the decoder/encoder? */
 			cm_audioroom_room *old_audioroom = participant->room;
@@ -2200,7 +2201,7 @@ static void *cm_audioroom_handler(void *data) {
 			janus_mutex_lock(&old_audioroom->mutex);
 			event = json_object();
 			json_object_set_new(event, "audioroom", json_string("event"));
-			json_object_set_new(event, "room", json_integer(old_audioroom->room_id));
+			json_object_set_new(event, "room", json_string(old_audioroom->room_id));
 			json_object_set_new(event, "leaving", json_integer(participant->user_id));
 			char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			GHashTableIter iter;
@@ -2235,7 +2236,7 @@ static void *cm_audioroom_handler(void *data) {
 			/* Notify the other participants */
 			json_t *newuser = json_object();
 			json_object_set_new(newuser, "audioroom", json_string("joined"));
-			json_object_set_new(newuser, "room", json_integer(audioroom->room_id));
+			json_object_set_new(newuser, "room", json_string(audioroom->room_id));
 			json_t *newuserlist = json_array();
 			json_t *pl = json_object();
 			json_object_set_new(pl, "id", json_integer(participant->user_id));
@@ -2274,7 +2275,7 @@ static void *cm_audioroom_handler(void *data) {
 			}
 			event = json_object();
 			json_object_set_new(event, "audioroom", json_string("roomchanged"));
-			json_object_set_new(event, "room", json_integer(audioroom->room_id));
+			json_object_set_new(event, "room", json_string(audioroom->room_id));
 			json_object_set_new(event, "id", json_integer(user_id));
 			json_object_set_new(event, "participants", list);
 			janus_mutex_unlock(&audioroom->mutex);
@@ -2292,7 +2293,7 @@ static void *cm_audioroom_handler(void *data) {
 			janus_mutex_lock(&audioroom->mutex);
 			event = json_object();
 			json_object_set_new(event, "audioroom", json_string("event"));
-			json_object_set_new(event, "room", json_integer(audioroom->room_id));
+			json_object_set_new(event, "room", json_string(audioroom->room_id));
 			json_object_set_new(event, "leaving", json_integer(participant->user_id));
 			char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 			GHashTableIter iter;
@@ -2391,7 +2392,7 @@ static void *cm_audioroom_handler(void *data) {
 				json_array_append_new(list, pl);
 				json_t *pub = json_object();
 				json_object_set_new(pub, "audioroom", json_string("event"));
-				json_object_set_new(pub, "room", json_integer(participant->room->room_id));
+				json_object_set_new(pub, "room", json_string(participant->room->room_id));
 				json_object_set_new(pub, "participants", list);
 				char *pub_text = json_dumps(pub, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 				json_decref(pub);
@@ -2450,7 +2451,7 @@ static void *cm_audioroom_mixer_thread(void *data) {
 		JANUS_LOG(LOG_ERR, "Invalid room!\n");
 		return NULL;
 	}
-	JANUS_LOG(LOG_VERB, "Thread is for mixing room %"SCNu64" (%s) at rate %"SCNu32"...\n", audioroom->room_id, audioroom->room_name, audioroom->sampling_rate);
+	JANUS_LOG(LOG_VERB, "Thread is for mixing room %s (%s) at rate %"SCNu32"...\n", audioroom->room_id, audioroom->room_name, audioroom->sampling_rate);
 
 	/* Do we need to record the mix? */
 	if(audioroom->record) {
@@ -2458,7 +2459,7 @@ static void *cm_audioroom_mixer_thread(void *data) {
 		if(audioroom->record_file)
 			g_snprintf(filename, 255, "%s", audioroom->record_file);
 		else
-			g_snprintf(filename, 255, "/tmp/janus-audioroom-%"SCNu64".wav", audioroom->room_id);
+			g_snprintf(filename, 255, "/tmp/janus-audioroom-%s.wav", audioroom->room_id);
 		audioroom->recording = fopen(filename, "wb");
 		if(audioroom->recording == NULL) {
 			JANUS_LOG(LOG_WARN, "Recording requested, but could NOT open file %s for writing...\n", filename);
@@ -2535,13 +2536,13 @@ static void *cm_audioroom_mixer_thread(void *data) {
 		if(count == 0) {
 			/* No participant, do nothing */
 			if(prev_count > 0) {
-				JANUS_LOG(LOG_VERB, "Last user just left room %"SCNu64", going idle...\n", audioroom->room_id);
+				JANUS_LOG(LOG_VERB, "Last user just left room %s, going idle...\n", audioroom->room_id);
 				prev_count = 0;
 			}
 			continue;
 		}
 		if(prev_count == 0) {
-			JANUS_LOG(LOG_VERB, "First user just joined room %"SCNu64", waking it up...\n", audioroom->room_id);
+			JANUS_LOG(LOG_VERB, "First user just joined room %s, waking it up...\n", audioroom->room_id);
 		}
 		prev_count = count;
 		/* Update RTP header information */
@@ -2610,7 +2611,7 @@ static void *cm_audioroom_mixer_thread(void *data) {
 					mixedpkt->length = samples;	/* We set the number of samples here, not the data length */
 					mixedpkt->timestamp = ts;
 					mixedpkt->seq_number = seq;
-					mixedpkt->ssrc = audioroom->room_id;
+					mixedpkt->ssrc = g_str_hash(audioroom->room_id);
 					g_async_queue_push(p->outbuf, mixedpkt);
 				}
 			}
@@ -2627,9 +2628,10 @@ static void *cm_audioroom_mixer_thread(void *data) {
 	}
 	if(audioroom->recording)
 		fclose(audioroom->recording);
-	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %"SCNu64" (%s)...\n", audioroom->room_id, audioroom->room_name);
+	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %s (%s)...\n", audioroom->room_id, audioroom->room_name);
 
 	/* Free resources */
+	g_free(audioroom->room_id);
 	g_free(audioroom->room_name);
 	g_free(audioroom->room_secret);
 	g_free(audioroom->room_pin);
