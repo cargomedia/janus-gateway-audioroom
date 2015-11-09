@@ -2543,6 +2543,15 @@ static void *cm_audioroom_mixer_thread(void *data) {
 		if(audioroom->recording == NULL) {
 			JANUS_LOG(LOG_WARN, "Recording requested, but could NOT open file %s for writing...\n", filename);
 		} else {
+			/* FIXME: @landswellsong should we report failures to the supers? */
+			json_t *response = json_object();
+			json_object_set_new(response, "audorom", json_string("archive-started"));
+			json_object_set_new(response, "id", json_string(audioroom->room_id));
+			json_object_set_new(response, "audioroom", json_string(filename));
+
+			cm_audioroom_notify_supers(response);
+			json_decref(response);
+
 			JANUS_LOG(LOG_VERB, "Recording requested, opened file %s for writing\n", filename);
 			/* Write WAV header */
 			wav_header header = {
@@ -2705,8 +2714,23 @@ static void *cm_audioroom_mixer_thread(void *data) {
 		}
 		g_list_free(participants_list);
 	}
-	if(audioroom->recording)
+	if(audioroom->recording) {
 		fclose(audioroom->recording);
+
+		char filename[255];
+		if(audioroom->record_file)
+			g_snprintf(filename, 255, "%s/%s", cm_audioroom_settings.archive_path, audioroom->record_file);
+		else
+			g_snprintf(filename, 255, "/tmp/janus-audioroom-%s.wav", audioroom->room_id);
+		/* FIXME: @landswellsong should we report failures to the supers? */
+		json_t *response = json_object();
+		json_object_set_new(response, "audorom", json_string("archive-finished"));
+		json_object_set_new(response, "id", json_string(audioroom->room_id));
+		json_object_set_new(response, "audioroom", json_string(filename));
+
+		cm_audioroom_notify_supers(response);
+		json_decref(response);
+	}
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %s (%s)...\n", audioroom->room_id, audioroom->room_name);
 
 	/* Free resources */
