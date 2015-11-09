@@ -409,6 +409,12 @@ void cm_audioroom_hangup_media(janus_plugin_session *handle);
 void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error);
 char *cm_audioroom_query_session(janus_plugin_session *handle);
 
+static struct {
+	const char *archive_path;
+	const char *recording_pattern;
+} cm_audioroom_settings;
+
+
 /* Plugin setup */
 static janus_plugin cm_audioroom_plugin =
 	JANUS_PLUGIN_INIT (
@@ -449,6 +455,17 @@ static void *cm_audioroom_handler(void *data);
 static void cm_audioroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *cm_audioroom_mixer_thread(void *data);
 static void *cm_audioroom_participant_thread(void *data);
+
+/* Helper to remove insane code duplication everywhere
+ 	 Sample illustrating use:
+			something things[] = { X, Y, Z };
+			_foreach(i, things) {
+				print(things[i]);
+			}
+
+			Note, iterator variable exported in the current scope;
+			*/
+#define _foreach(var, container) size_t var; for (var = 0; var < sizeof(container)/sizeof(container[0]); var++)
 
 typedef struct cm_audioroom_message {
 	janus_plugin_session *handle;
@@ -697,9 +714,28 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
+	cm_audioroom_settings.archive_path =  g_strdup("/tmp/recordings");
+	cm_audioroom_settings.recording_pattern = g_strdup("rec-%1$s-%2$llu-audioroom");
+
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
-		/* Ta-da */
+		const char *inames [] = {
+		 "archive_path",
+		 "recording_pattern",
+		};
+		const char **ivars [] = {
+			&cm_audioroom_settings.archive_path,
+			&cm_audioroom_settings.recording_pattern,
+		};
+
+		_foreach(i, ivars) {
+			janus_config_item *itm = janus_config_get_item_drilldown(config, "general", inames[i]);
+			if (itm && itm->value) {
+				g_free((gpointer)*ivars[i]);
+				*ivars[i] = g_strdup(itm->value);
+			}
+		}
+		/* FIXME @landswellsong free the g_strdup in de-init() */
 		/* Done */
 		janus_config_destroy(config);
 		config = NULL;
@@ -1068,11 +1104,19 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 				g_snprintf(error_cause, 512, "We currently only support 16kHz (wideband) as a sampling rate for audio rooms, %"SCNu32" TBD...", audioroom->sampling_rate);
 				goto error;
 		}
-		audioroom->record = FALSE;
-		if(record && json_is_true(record))
-			audioroom->record = TRUE;
-		if(recfile)
-			audioroom->record_file = g_strdup(json_string_value(recfile));
+		/* FIXME @landswellsong always recording right now, filename is configuration option */
+		audioroom->record = TRUE;
+		char tmpfilename[512];
+		guint64 ml = janus_get_monotonic_time();
+		g_snprintf(tmpfilename, 512, cm_audioroom_settings.recording_pattern,
+			audioroom->room_id, ml);
+		audioroom->record_file = g_strdup(tmpfilename);
+
+		// audioroom->record = FALSE;
+		// if(record && json_is_true(record))
+		// 	audioroom->record = TRUE;
+		// if(recfile)
+		// 	audioroom->record_file = g_strdup(json_string_value(recfile));
 		audioroom->recording = NULL;
 		audioroom->destroy = 0;
 		audioroom->participants = g_hash_table_new(NULL, NULL);
@@ -2457,7 +2501,7 @@ static void *cm_audioroom_mixer_thread(void *data) {
 	if(audioroom->record) {
 		char filename[255];
 		if(audioroom->record_file)
-			g_snprintf(filename, 255, "%s", audioroom->record_file);
+			g_snprintf(filename, 255, "%s/%s", cm_audioroom_settings.archive_path, audioroom->record_file);
 		else
 			g_snprintf(filename, 255, "/tmp/janus-audioroom-%s.wav", audioroom->room_id);
 		audioroom->recording = fopen(filename, "wb");
