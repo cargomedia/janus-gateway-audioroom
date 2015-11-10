@@ -1,0 +1,7 @@
+[general]
+; printf pattern for recordings filenames
+; Short usage, the following gets substituted:
+; %1$s    is streamChannelKey (string)
+; %2$llu  is timestamp (guint64)
+; %3$s    is type ("audio", "video" or "thumb" string)
+; recording_pattern = "rec-%1$s-%2$llu-%3$s"
