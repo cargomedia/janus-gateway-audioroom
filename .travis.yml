@@ -10,6 +10,13 @@ before_install:
   - sudo apt-get install -y libmicrohttpd-dev libjansson-dev libnice-dev libssl-dev libsrtp-dev
   - sudo apt-get install -y libglib2.0-dev libini-config-dev libcollection-dev gengetopt
   - sudo apt-get install -y libtool autoconf automake make bison flex gcc cmake glib-2.0 clang
+  - wget http://downloads.xiph.org/releases/opus/opus-1.1.tar.gz
+  - tar xzvf opus-1.1.tar.gz
+  - cd opus-1.1
+  - ./configure --prefix="$HOME/ffmpeg_build" --disable-shared
+  - make
+  - sudo make install
+  - cd ..
 
 script:
   - ./autogen.sh
