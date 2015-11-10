@@ -1251,7 +1251,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		/* Prepare response/notification */
 		response = json_object();
 		json_object_set_new(response, "audioroom", json_string("destroyed"));
-		json_object_set_new(response, "id", json_integer(room_id));
+		json_object_set_new(response, "id", json_string(room_id));
 		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		/* Notify all participants that the fun is over, and that they'll be kicked */
 		JANUS_LOG(LOG_VERB, "Notifying all participants\n");
@@ -1309,7 +1309,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 				continue;
 			}
 			json_t *rl = json_object();
-			json_object_set_new(rl, "id", json_integer(room->room_id));
+			json_object_set_new(rl, "id", json_string(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
 			json_object_set_new(rl, "sampling_rate", json_integer(room->sampling_rate));
 			json_object_set_new(rl, "record", json_string(room->record ? "true" : "false"));
