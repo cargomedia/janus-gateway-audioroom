@@ -521,16 +521,13 @@ typedef struct cm_audioroom_session {
 	gpointer participant;
 	gboolean started;
 	gboolean stopping;
-	gboolean super_user;
 	volatile gint hangingup;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } cm_audioroom_session;
 static GHashTable *sessions;
-static GList *super_sessions;
 static GList *old_sessions;
 static janus_mutex sessions_mutex;
-static void cm_audioroom_notify_supers(json_t* );
-static void cm_audioroom_notify_session(gpointer, gpointer);
+static void cm_audioroom_store_event(json_t* );
 
 typedef struct cm_audioroom_rtp_context {
 	/* Needed to fix seq and ts in case of publisher switching */
@@ -713,7 +710,6 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 		NULL);			 /* Value destructor, we don't want this done automatically */
 	janus_mutex_init(&rooms_mutex);
 	sessions = g_hash_table_new(NULL, NULL);
-	super_sessions = NULL;
 	janus_mutex_init(&sessions_mutex);
 	messages = g_async_queue_new_full((GDestroyNotify) cm_audioroom_message_free);
 	/* This is the callback we'll need to invoke to contact the gateway */
@@ -849,7 +845,6 @@ void cm_audioroom_create_session(janus_plugin_session *handle, int *error) {
 	session->handle = handle;
 	session->started = FALSE;
 	session->stopping = FALSE;
-	session->super_user = FALSE;
 	session->destroyed = 0;
 	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
@@ -875,7 +870,6 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
 		g_hash_table_remove(sessions, handle);
-		super_sessions = g_list_remove_all(super_sessions, session);
 		cm_audioroom_hangup_media(handle);
 		session->destroyed = janus_get_monotonic_time();
 		/* Cleaning up and removing the session is done in a lazy way */
@@ -984,35 +978,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 	}
 	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
 	const char *request_text = json_string_value(request);
-	if(!strcasecmp(request_text, "superuser")) {
-		/* TODO @landswellsong layer authentication over that */
-		json_t *value = json_object_get(root, "value");
-		if(!value) {
-			JANUS_LOG(LOG_ERR, "Missing element (value)\n");
-			error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (value)");
-			goto error;
-		}
-		if(!json_is_boolean(value)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (value should be boolean)\n");
-			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (value should be boolean)");
-			goto error;
-		}
-
-		session->super_user = json_is_true(value);
-
-		if (session->super_user) {
-			super_sessions = g_list_prepend(super_sessions, session);
-		} else {
-			super_sessions = g_list_remove_all(super_sessions, session);
-		}
-
-		response = json_object();
-		json_object_set_new(response, "audioroom", json_string("superuser"));
-		json_object_set_new(response, "value", json_boolean(session->super_user));
-		goto plugin_response;
-	} else if(!strcasecmp(request_text, "create")) {
+	if(!strcasecmp(request_text, "create")) {
 		/* Create a new audioroom */
 		JANUS_LOG(LOG_VERB, "Creating a new audioroom\n");
 		json_t *desc = json_object_get(root, "description");
@@ -2549,7 +2515,7 @@ static void *cm_audioroom_mixer_thread(void *data) {
 			json_object_set_new(response, "id", json_string(audioroom->room_id));
 			json_object_set_new(response, "audioroom", json_string(filename));
 
-			cm_audioroom_notify_supers(response);
+			cm_audioroom_store_event(response);
 			json_decref(response);
 
 			JANUS_LOG(LOG_VERB, "Recording requested, opened file %s for writing\n", filename);
@@ -2728,7 +2694,7 @@ static void *cm_audioroom_mixer_thread(void *data) {
 		json_object_set_new(response, "id", json_string(audioroom->room_id));
 		json_object_set_new(response, "audioroom", json_string(filename));
 
-		cm_audioroom_notify_supers(response);
+		cm_audioroom_store_event(response);
 		json_decref(response);
 	}
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %s (%s)...\n", audioroom->room_id, audioroom->room_name);
@@ -2922,7 +2888,7 @@ static char randomAZ09() {
 	return '?'; /* Ideally will never happen */
 }
 
-void cm_audioroom_notify_supers(json_t* response) {
+void cm_audioroom_store_event(json_t* response) {
 	if (!response)
 		return;
 
@@ -2936,24 +2902,23 @@ void cm_audioroom_notify_supers(json_t* response) {
 	evtdata.evt = json_deep_copy(response);
 	guint64 tm = janus_get_monotonic_time();
 	json_object_set_new(evtdata.evt, "timestamp", json_integer(tm));
-	json_object_set_new(evtdata.evt, "superuser", json_true());
 
 	/* Iterating over the serssions */
-	g_list_foreach(super_sessions, cm_audioroom_notify_session, &evtdata);
+	///g_list_foreach(super_sessions, cm_audioroom_notify_session, &evtdata);
 
 	json_decref(evtdata.evt);
 }
 
-void cm_audioroom_notify_session(gpointer data, gpointer user_data) {
-	cm_audioroom_session *session = data;
-	cm_audioroom_evtdata *event = user_data;
-
-	if (!session || !event)
-		return;
-
-	char *event_text = json_dumps(event->evt, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-	int ret = gateway->push_event(session->handle, &cm_audioroom_plugin, event->transaction_id, event_text, NULL, NULL);
-	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-	g_free(event_text);
-}
+// void cm_audioroom_notify_session(gpointer data, gpointer user_data) {
+// 	cm_audioroom_session *session = data;
+// 	cm_audioroom_evtdata *event = user_data;
+//
+// 	if (!session || !event)
+// 		return;
+//
+// 	char *event_text = json_dumps(event->evt, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+// 	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
+// 	int ret = gateway->push_event(session->handle, &cm_audioroom_plugin, event->transaction_id, event_text, NULL, NULL);
+// 	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+// 	g_free(event_text);
+// }
