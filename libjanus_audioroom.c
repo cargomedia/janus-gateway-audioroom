@@ -387,7 +387,7 @@ record_file =	/path/to/recording.wav (where to save the recording)
 #define CM_AUDIOROOM_DESCRIPTION		"This is a plugin implementing an audio conference bridge for Janus, mixing Opus streams."
 #define CM_AUDIOROOM_NAME				"JANUS CM audio plugin"
 #define CM_AUDIOROOM_AUTHOR			"Meetecho s.r.l."
-#define CM_AUDIOROOM_PACKAGE			"janus.plugin.audioroom"
+#define CM_AUDIOROOM_PACKAGE			"janus.cm.plugin.audioroom"
 
 /* Plugin methods */
 janus_plugin *create(void);
