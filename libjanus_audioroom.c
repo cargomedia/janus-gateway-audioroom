@@ -1032,15 +1032,15 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		}
 		json_t *room = json_object_get(root, "id");
 		if(!room) {
-			JANUS_LOG(LOG_ERR, "Missing element (room)\n");
+			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
 			error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (room)");
+			g_snprintf(error_cause, 512, "Missing element (id)");
 			goto error;
 		}
 		if(!json_is_string(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be a string)\n");
 			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
+			g_snprintf(error_cause, 512, "Invalid element (id should be a string)");
 			goto error;
 		}
 		const gchar *room_id = json_string_value(room);
@@ -1166,15 +1166,15 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing audioroom room\n");
 		json_t *room = json_object_get(root, "id");
 		if(!room) {
-			JANUS_LOG(LOG_ERR, "Missing element (room)\n");
+			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
 			error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (room)");
+			g_snprintf(error_cause, 512, "Missing element (id)");
 			goto error;
 		}
 		if(!json_is_string(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be a string)\n");
 			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
+			g_snprintf(error_cause, 512, "Invalid element (id should be a string)");
 			goto error;
 		}
 		const gchar *room_id = json_string_value(room);
@@ -1182,9 +1182,9 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, room_id);
 		if(audioroom == NULL) {
 			janus_mutex_unlock(&rooms_mutex);
-			JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id);
+			JANUS_LOG(LOG_ERR, "No such id (%s)\n", room_id);
 			error_code = CM_AUDIOROOM_ERROR_NO_SUCH_ROOM;
-			g_snprintf(error_cause, 512, "No such room (%s)", room_id);
+			g_snprintf(error_cause, 512, "No such id (%s)", room_id);
 			goto error;
 		}
 		if(audioroom->room_secret) {
@@ -1292,15 +1292,15 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		/* Check whether a given room exists or not, returns true/false */
 		json_t *room = json_object_get(root, "id");
 		if(!room) {
-			JANUS_LOG(LOG_ERR, "Missing element (room)\n");
+			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
 			error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (room)");
+			g_snprintf(error_cause, 512, "Missing element (id)");
 			goto error;
 		}
 		if(!json_is_string(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be a string)\n");
 			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
+			g_snprintf(error_cause, 512, "Invalid element (id should be a string)");
 			goto error;
 		}
 		const gchar *room_id = json_string_value(room);
@@ -1316,15 +1316,15 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		/* List all participants in a room */
 		json_t *room = json_object_get(root, "id");
 		if(!room) {
-			JANUS_LOG(LOG_ERR, "Missing element (room)\n");
+			JANUS_LOG(LOG_ERR, "Missing element (id)\n");
 			error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-			g_snprintf(error_cause, 512, "Missing element (room)");
+			g_snprintf(error_cause, 512, "Missing element (id)");
 			goto error;
 		}
 		if(!json_is_string(room)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
+			JANUS_LOG(LOG_ERR, "Invalid element (id should be a string)\n");
 			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
+			g_snprintf(error_cause, 512, "Invalid element (id should be a string)");
 			goto error;
 		}
 		const gchar *room_id = json_string_value(room);
@@ -1702,15 +1702,15 @@ static void *cm_audioroom_handler(void *data) {
 			}
 			json_t *room = json_object_get(root, "id");
 			if(!room) {
-				JANUS_LOG(LOG_ERR, "Missing element (room)\n");
+				JANUS_LOG(LOG_ERR, "Missing element (id)\n");
 				error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (room)");
+				g_snprintf(error_cause, 512, "Missing element (id)");
 				goto error;
 			}
 			if(!json_is_string(room)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be a string)\n");
 				error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
+				g_snprintf(error_cause, 512, "Invalid element (id should be a string)");
 				goto error;
 			}
 			const gchar *room_id = json_string_value(room);
@@ -2067,15 +2067,15 @@ static void *cm_audioroom_handler(void *data) {
 			}
 			json_t *room = json_object_get(root, "id");
 			if(!room) {
-				JANUS_LOG(LOG_ERR, "Missing element (room)\n");
+				JANUS_LOG(LOG_ERR, "Missing element (id)\n");
 				error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (room)");
+				g_snprintf(error_cause, 512, "Missing element (id)");
 				goto error;
 			}
 			if(!json_is_string(room)) {
-				JANUS_LOG(LOG_ERR, "Invalid element (room should be a string)\n");
+				JANUS_LOG(LOG_ERR, "Invalid element (id should be a string)\n");
 				error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (room should be a string)");
+				g_snprintf(error_cause, 512, "Invalid element (id should be a string)");
 				goto error;
 			}
 			const gchar *room_id = json_string_value(room);
