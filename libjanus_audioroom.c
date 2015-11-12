@@ -2524,14 +2524,6 @@ static void *cm_audioroom_mixer_thread(void *data) {
 		if(audioroom->recording == NULL) {
 			JANUS_LOG(LOG_WARN, "Recording requested, but could NOT open file %s for writing...\n", filename);
 		} else {
-			/* FIXME: @landswellsong should we report failures? */
-			json_t *response = json_object();
-			json_object_set_new(response, "id", json_string(audioroom->room_id));
-			json_object_set_new(response, "audio", json_string(filename));
-
-			cm_audioroom_store_event(response, "archive-started");
-			json_decref(response);
-
 			JANUS_LOG(LOG_VERB, "Recording requested, opened file %s for writing\n", filename);
 			/* Write WAV header */
 			wav_header header = {
