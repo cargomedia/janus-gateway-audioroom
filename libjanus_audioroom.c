@@ -457,6 +457,7 @@ static void *cm_audioroom_handler(void *data);
 static void cm_audioroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *cm_audioroom_mixer_thread(void *data);
 static void *cm_audioroom_participant_thread(void *data);
+static char *str_replace(char *instr, const char *needle, const char *replace);
 
 /* Helper to remove insane code duplication everywhere
  	 Sample illustrating use:
@@ -718,9 +719,9 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 	gateway = callback;
 
 	cm_audioroom_settings.job_path =  g_strdup("/tmp/jobs");
-	cm_audioroom_settings.job_pattern =  g_strdup("job-%3$s");
+	cm_audioroom_settings.job_pattern =  g_strdup("job-#{md5}");
 	cm_audioroom_settings.archive_path =  g_strdup("/tmp/recordings");
-	cm_audioroom_settings.recording_pattern = g_strdup("rec-%1$s-%2$llu-audioroom");
+	cm_audioroom_settings.recording_pattern = g_strdup("rec-#{id}-#{time}-#{type}");
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
@@ -1122,11 +1123,28 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		}
 		/* FIXME @landswellsong always recording right now, filename is configuration option */
 		audioroom->record = TRUE;
-		char tmpfilename[512];
+		char *fname = g_strdup(cm_audioroom_settings.recording_pattern);
+
 		guint64 ml = janus_get_monotonic_time();
-		g_snprintf(tmpfilename, 512, cm_audioroom_settings.recording_pattern,
-			audioroom->room_id, ml);
-		audioroom->record_file = g_strdup(tmpfilename);
+		char ml_str [512];
+		g_snprintf(ml_str, 512, "%llu", (long long unsigned)ml);
+
+		const char *tags[] = {
+			"#{time}",
+			"#{id}",
+			"#{type}"
+		};
+
+		const char *values[] = {
+			ml_str,
+			audioroom->room_id,
+			"audioroom"
+		};
+
+		_foreach (k, tags)
+			fname = str_replace(fname, tags[k], values[k]);
+
+		audioroom->record_file = fname;
 
 		// audioroom->record = FALSE;
 		// if(record && json_is_true(record))
@@ -2870,22 +2888,53 @@ void cm_audioroom_store_event(json_t* response, const char *event_name) {
 
 	/* Generating an MD5 for filename */
 	guint64 ml = janus_get_monotonic_time();
+	char ml_str [512];
+	g_snprintf(ml_str, 512, "%llu", (long long unsigned)ml);
+
 	guint32 r = g_random_int();
+	char r_str [512];
+	g_snprintf(r_str, 512, "%u", r);
+
 	char buf[512];
-	g_snprintf(buf, 512, "%lu%llu%s", r, (long long unsigned)ml, CM_AUDIOROOM_PACKAGE);
+	g_snprintf(buf, 512, "%lu%llu%s", (long unsigned)r, (long long unsigned)ml, CM_AUDIOROOM_PACKAGE);
 	gchar *md5 = g_compute_checksum_for_string(G_CHECKSUM_MD5, buf, -1);
 
 	/* Constructing the filename */
-	char fname[512];
-	g_snprintf(fname, 512, "job-%s",//cm_audioroom_settings.job_pattern,
-/*ml, r,*/ md5/*, CM_AUDIOROOM_PACKAGE*/);
+	char *fname = g_strdup(cm_audioroom_settings.job_pattern);
+
+	const char *tags[] = {
+		"#{time}",
+		"#{rand}",
+		"#{md5}",
+		"#{plugin}"
+	};
+
+	const char *values[] = {
+		ml_str,
+		r_str,
+		md5,
+		CM_AUDIOROOM_PACKAGE
+	};
+
+	_foreach (j, tags)
+		fname = str_replace(fname, tags[j], values[j]);
+
 	g_free(md5);
 
 	char fullpath[512];
 	g_snprintf(fullpath, 512, "%s/%s.json", cm_audioroom_settings.job_path, fname);
+	g_free(fname);
 
 	if (!json_dump_file(envelope, fullpath, JSON_INDENT(4)))
 		JANUS_LOG(LOG_ERR, "Error saving JSON to %s", fullpath);
 
 	json_decref(envelope);
+}
+
+char *str_replace(char *instr, const char *needle, const char *replace) {
+	GRegex* regex = g_regex_new(needle, 0, 0, NULL);
+	char* new = g_regex_replace_literal(regex, instr, -1, 0, replace, 0, NULL);
+	g_regex_unref (regex);
+	g_free(instr);
+	return new;
 }
