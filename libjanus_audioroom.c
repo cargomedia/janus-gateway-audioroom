@@ -410,6 +410,8 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error);
 char *cm_audioroom_query_session(janus_plugin_session *handle);
 
 static struct {
+	const char *job_path;
+	const char *job_pattern;
 	const char *archive_path;
 	const char *recording_pattern;
 } cm_audioroom_settings;
@@ -455,6 +457,7 @@ static void *cm_audioroom_handler(void *data);
 static void cm_audioroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *cm_audioroom_mixer_thread(void *data);
 static void *cm_audioroom_participant_thread(void *data);
+static char *str_replace(char *instr, const char *needle, const char *replace);
 
 /* Helper to remove insane code duplication everywhere
  	 Sample illustrating use:
@@ -527,7 +530,7 @@ typedef struct cm_audioroom_session {
 static GHashTable *sessions;
 static GList *old_sessions;
 static janus_mutex sessions_mutex;
-static void cm_audioroom_store_event(json_t* );
+static void cm_audioroom_store_event(json_t* ,const char *);
 
 typedef struct cm_audioroom_rtp_context {
 	/* Needed to fix seq and ts in case of publisher switching */
@@ -715,16 +718,22 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 	/* This is the callback we'll need to invoke to contact the gateway */
 	gateway = callback;
 
+	cm_audioroom_settings.job_path =  g_strdup("/tmp/jobs");
+	cm_audioroom_settings.job_pattern =  g_strdup("job-#{md5}");
 	cm_audioroom_settings.archive_path =  g_strdup("/tmp/recordings");
-	cm_audioroom_settings.recording_pattern = g_strdup("rec-%1$s-%2$llu-audioroom");
+	cm_audioroom_settings.recording_pattern = g_strdup("rec-#{id}-#{time}-#{type}");
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
 		const char *inames [] = {
+		 "job_path",
+		 "job_pattern",
 		 "archive_path",
 		 "recording_pattern",
 		};
 		const char **ivars [] = {
+			&cm_audioroom_settings.job_path,
+			&cm_audioroom_settings.job_pattern,
 			&cm_audioroom_settings.archive_path,
 			&cm_audioroom_settings.recording_pattern,
 		};
@@ -797,6 +806,13 @@ void cm_audioroom_destroy(void) {
 	g_async_queue_unref(messages);
 	messages = NULL;
 	sessions = NULL;
+
+	/* Freeing configuration strings */
+	g_free((gpointer)cm_audioroom_settings.job_path);
+	g_free((gpointer)cm_audioroom_settings.job_pattern);
+	g_free((gpointer)cm_audioroom_settings.archive_path);
+	g_free((gpointer)cm_audioroom_settings.recording_pattern);
+
 	g_atomic_int_set(&initialized, 0);
 	g_atomic_int_set(&stopping, 0);
 	JANUS_LOG(LOG_INFO, "%s destroyed!\n", CM_AUDIOROOM_NAME);
@@ -1107,11 +1123,28 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		}
 		/* FIXME @landswellsong always recording right now, filename is configuration option */
 		audioroom->record = TRUE;
-		char tmpfilename[512];
+		char *fname = g_strdup(cm_audioroom_settings.recording_pattern);
+
 		guint64 ml = janus_get_monotonic_time();
-		g_snprintf(tmpfilename, 512, cm_audioroom_settings.recording_pattern,
-			audioroom->room_id, ml);
-		audioroom->record_file = g_strdup(tmpfilename);
+		char ml_str [512];
+		g_snprintf(ml_str, 512, "%llu", (long long unsigned)ml);
+
+		const char *tags[] = {
+			"#{time}",
+			"#{id}",
+			"#{type}"
+		};
+
+		const char *values[] = {
+			ml_str,
+			audioroom->room_id,
+			"audioroom"
+		};
+
+		_foreach (k, tags)
+			fname = str_replace(fname, tags[k], values[k]);
+
+		audioroom->record_file = fname;
 
 		// audioroom->record = FALSE;
 		// if(record && json_is_true(record))
@@ -2509,15 +2542,6 @@ static void *cm_audioroom_mixer_thread(void *data) {
 		if(audioroom->recording == NULL) {
 			JANUS_LOG(LOG_WARN, "Recording requested, but could NOT open file %s for writing...\n", filename);
 		} else {
-			/* FIXME: @landswellsong should we report failures to the supers? */
-			json_t *response = json_object();
-			json_object_set_new(response, "audorom", json_string("archive-started"));
-			json_object_set_new(response, "id", json_string(audioroom->room_id));
-			json_object_set_new(response, "audioroom", json_string(filename));
-
-			cm_audioroom_store_event(response);
-			json_decref(response);
-
 			JANUS_LOG(LOG_VERB, "Recording requested, opened file %s for writing\n", filename);
 			/* Write WAV header */
 			wav_header header = {
@@ -2688,13 +2712,12 @@ static void *cm_audioroom_mixer_thread(void *data) {
 			g_snprintf(filename, 255, "%s/%s", cm_audioroom_settings.archive_path, audioroom->record_file);
 		else
 			g_snprintf(filename, 255, "/tmp/janus-audioroom-%s.wav", audioroom->room_id);
-		/* FIXME: @landswellsong should we report failures to the supers? */
+		/* FIXME: @landswellsong should we report failures? */
 		json_t *response = json_object();
-		json_object_set_new(response, "audorom", json_string("archive-finished"));
 		json_object_set_new(response, "id", json_string(audioroom->room_id));
-		json_object_set_new(response, "audioroom", json_string(filename));
+		json_object_set_new(response, "audio", json_string(filename));
 
-		cm_audioroom_store_event(response);
+		cm_audioroom_store_event(response, "archive-finished");
 		json_decref(response);
 	}
 	JANUS_LOG(LOG_VERB, "Leaving mixer thread for room %s (%s)...\n", audioroom->room_id, audioroom->room_name);
@@ -2855,70 +2878,63 @@ static void cm_audioroom_relay_rtp_packet(gpointer data, gpointer user_data) {
 	packet->data->seq_number = htons(packet->seq_number);
 }
 
-typedef struct cm_audioroom_evtdata {
-  char transaction_id[13];
-	json_t *evt;
-} cm_audioroom_evtdata;
+void cm_audioroom_store_event(json_t* response, const char *event_name) {
+	/* Creating outer layer JSON */
+	json_t *envelope = json_object();
 
-static char randomAZ09() {
-	/* [0-9A-Za-z]* basically picking characters from three intervals */
-	char intv[][2] = {
-		{'0','9'},
-	  {'A','Z'},
-		{'a','z'}
+	json_object_set_new(envelope, "plugin", json_string(CM_AUDIOROOM_PACKAGE));
+	json_object_set_new(envelope, "event", json_string(event_name));
+	json_object_set(envelope, "data", response);
+
+	/* Generating an MD5 for filename */
+	guint64 ml = janus_get_monotonic_time();
+	char ml_str [512];
+	g_snprintf(ml_str, 512, "%llu", (long long unsigned)ml);
+
+	guint32 r = g_random_int();
+	char r_str [512];
+	g_snprintf(r_str, 512, "%u", r);
+
+	char buf[512];
+	g_snprintf(buf, 512, "%lu%llu%s", (long unsigned)r, (long long unsigned)ml, CM_AUDIOROOM_PACKAGE);
+	gchar *md5 = g_compute_checksum_for_string(G_CHECKSUM_MD5, buf, -1);
+
+	/* Constructing the filename */
+	char *fname = g_strdup(cm_audioroom_settings.job_pattern);
+
+	const char *tags[] = {
+		"#{time}",
+		"#{rand}",
+		"#{md5}",
+		"#{plugin}"
 	};
-	static size_t total = 0;
 
-	/* First run, calculate how much symbols we get to pick from */
-	if (total == 0) {
-		_foreach(i, intv)
-			total += intv[i][1]-intv[i][0];
-	}
+	const char *values[] = {
+		ml_str,
+		r_str,
+		md5,
+		CM_AUDIOROOM_PACKAGE
+	};
 
-	/* Picking a random number */
-	size_t n = g_random_int() % total;
+	_foreach (j, tags)
+		fname = str_replace(fname, tags[j], values[j]);
 
-	/* Searching which interval it belongs to */
-	_foreach(j, intv)
-		if (n < intv[j][1]-intv[j][0])
-			return intv[j][0]+n;
-		else
-			n-=intv[j][1]-intv[j][0];
+	g_free(md5);
 
-	return '?'; /* Ideally will never happen */
+	char fullpath[512];
+	g_snprintf(fullpath, 512, "%s/%s.json", cm_audioroom_settings.job_path, fname);
+	g_free(fname);
+
+	if (!json_dump_file(envelope, fullpath, JSON_INDENT(4)))
+		JANUS_LOG(LOG_ERR, "Error saving JSON to %s", fullpath);
+
+	json_decref(envelope);
 }
 
-void cm_audioroom_store_event(json_t* response) {
-	if (!response)
-		return;
-
-	/* Adding timestamp and transaction id */
-	cm_audioroom_evtdata evtdata;
-	evtdata.transaction_id[12] = 0;
-	size_t i;
-	for (i = 0; i < 12; i++)
-		evtdata.transaction_id[i] = randomAZ09();
-
-	evtdata.evt = json_deep_copy(response);
-	guint64 tm = janus_get_monotonic_time();
-	json_object_set_new(evtdata.evt, "timestamp", json_integer(tm));
-
-	/* Iterating over the serssions */
-	///g_list_foreach(super_sessions, cm_audioroom_notify_session, &evtdata);
-
-	json_decref(evtdata.evt);
+char *str_replace(char *instr, const char *needle, const char *replace) {
+	GRegex* regex = g_regex_new(needle, 0, 0, NULL);
+	char* new = g_regex_replace_literal(regex, instr, -1, 0, replace, 0, NULL);
+	g_regex_unref (regex);
+	g_free(instr);
+	return new;
 }
-
-// void cm_audioroom_notify_session(gpointer data, gpointer user_data) {
-// 	cm_audioroom_session *session = data;
-// 	cm_audioroom_evtdata *event = user_data;
-//
-// 	if (!session || !event)
-// 		return;
-//
-// 	char *event_text = json_dumps(event->evt, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-// 	JANUS_LOG(LOG_VERB, "Pushing event: %s\n", event_text);
-// 	int ret = gateway->push_event(session->handle, &cm_audioroom_plugin, event->transaction_id, event_text, NULL, NULL);
-// 	JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-// 	g_free(event_text);
-// }
