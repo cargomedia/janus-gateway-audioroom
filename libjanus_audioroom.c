@@ -458,6 +458,7 @@ static void cm_audioroom_relay_rtp_packet(gpointer data, gpointer user_data);
 static void *cm_audioroom_mixer_thread(void *data);
 static void *cm_audioroom_participant_thread(void *data);
 static char *str_replace(char *instr, const char *needle, const char *replace);
+static gboolean trailslash(const char *str);
 
 /* Helper to remove insane code duplication everywhere
  	 Sample illustrating use:
@@ -2534,8 +2535,10 @@ static void *cm_audioroom_mixer_thread(void *data) {
 	/* Do we need to record the mix? */
 	if(audioroom->record) {
 		char filename[255];
-		if(audioroom->record_file)
-			g_snprintf(filename, 255, "%s/%s", cm_audioroom_settings.archive_path, audioroom->record_file);
+		if(audioroom->record_file) {
+			g_snprintf(filename, 255, trailslash(cm_audioroom_settings.archive_path)? "%s%s" : "%s/%s",
+				cm_audioroom_settings.archive_path, audioroom->record_file);
+		}
 		else
 			g_snprintf(filename, 255, "/tmp/janus-audioroom-%s.wav", audioroom->room_id);
 		audioroom->recording = fopen(filename, "wb");
@@ -2922,7 +2925,8 @@ void cm_audioroom_store_event(json_t* response, const char *event_name) {
 	g_free(md5);
 
 	char fullpath[512];
-	g_snprintf(fullpath, 512, "%s/%s.json", cm_audioroom_settings.job_path, fname);
+	g_snprintf(fullpath, 512, trailslash(cm_audioroom_settings.job_path)? "%s%s.json" : "%s/%s.json",
+		cm_audioroom_settings.job_path, fname);
 	g_free(fname);
 
 	if (!json_dump_file(envelope, fullpath, JSON_INDENT(4)))
@@ -2937,4 +2941,8 @@ char *str_replace(char *instr, const char *needle, const char *replace) {
 	g_regex_unref (regex);
 	g_free(instr);
 	return new;
+}
+
+static gboolean trailslash(const char *str) {
+	return str[strlen(str)-1] == '/';
 }
