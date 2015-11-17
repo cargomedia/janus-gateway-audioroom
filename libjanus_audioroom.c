@@ -880,6 +880,12 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error) {
 	JANUS_LOG(LOG_VERB, "Removing AudioBridge session...\n");
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
+		/* If we've created the rooms, remove 'em */
+		if(session->rooms){
+			g_list_foreach(session->rooms, cm_audioroom_room_destroy, NULL);
+			session->rooms = NULL;
+		}
+
 		g_hash_table_remove(sessions, handle);
 		cm_audioroom_hangup_media(handle);
 		session->destroyed = janus_get_monotonic_time();
@@ -1196,7 +1202,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		json_object_set_new(response, "audioroom", json_string("destroyed"));
 		json_object_set_new(response, "id", json_string(audioroom->id));
 
-		cm_audioroom_room_destroy(audioroom, response);
+		cm_audioroom_room_destroy(audioroom, NULL);
 
 		/* Done */
 		JANUS_LOG(LOG_VERB, "Audiobridge room destroyed\n");
@@ -2802,7 +2808,9 @@ static gboolean trailslash(const char *str) {
 
 void cm_audioroom_room_destroy(gpointer data, gpointer user_data) {
 	cm_audioroom_room *room = (cm_audioroom_room *)data;
-	json_t *response = (json_t *)user_data;
+	json_t *response = json_object();
+	json_object_set_new(response, "audioroom", json_string("destroyed"));
+	json_object_set_new(response, "id", json_string(audioroom->id));
 	if (!audioroom->destroyed) {
 		/* Remove room */
 		g_hash_table_remove(rooms, GUINT_TO_POINTER(audioroom->id));
@@ -2849,4 +2857,5 @@ void cm_audioroom_room_destroy(gpointer data, gpointer user_data) {
 		audioroom->destroyed = janus_get_monotonic_time();
 		g_thread_join(audioroom->thread);
 	}
+	json_decref(response);
 }
