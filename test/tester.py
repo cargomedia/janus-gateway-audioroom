@@ -7,8 +7,6 @@ janus_url = "http://localhost:8088/janus"
 mountpoint_id = "Ababagalamaga"
 session_id = None
 handle_id = None
-ports = None
-streamer = None
 
 # Older requsests lack normal JSON POST
 def mypost(url, json_v):
@@ -58,12 +56,6 @@ def list():
                 } }, not session_id or not handle_id)
 
 def create(id=mountpoint_id):
-    def helper(j):
-        global ports
-        ports = []
-        for i in j["plugindata"]["data"]["stream"]["streams"]:
-            ports.append(i["audioport"])
-            ports.append(i["videoport"])
     janus_cmd({ "janus": "message",
                 "transaction": "tester.py",
                 "session_id": session_id,
@@ -73,7 +65,7 @@ def create(id=mountpoint_id):
                     "id": id,
                     "description": "Sample tester.py room",
                 }
-            }, not session_id or not handle_id, helper)
+            }, not session_id or not handle_id)
 
 def destroy():
     janus_cmd({ "janus": "message",
