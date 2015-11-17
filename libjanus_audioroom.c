@@ -492,7 +492,8 @@ void cm_audioroom_message_free(cm_audioroom_message *msg) {
 	g_free(msg);
 }
 
-
+/* Forward declaration */
+typedef struct cm_audioroom_session cm_audioroom_session;
 typedef struct cm_audioroom_room {
 	gchar *room_id;			/* Unique room ID */
 	gchar *room_name;			/* Room description */
@@ -505,9 +506,11 @@ typedef struct cm_audioroom_room {
 	GThread *thread;			/* Mixer thread for this room */
 	gint64 destroyed;			/* When this room has been destroyed */
 	janus_mutex mutex;			/* Mutex to lock this room instance */
+	cm_audioroom_session *session; /* Session that created the room */
 } cm_audioroom_room;
 static GHashTable *rooms;
 static janus_mutex rooms_mutex;
+void cm_audioroom_room_destroy(gpointer data, gpointer user_data);
 
 typedef struct cm_audioroom_session {
 	janus_plugin_session *handle;
@@ -515,6 +518,7 @@ typedef struct cm_audioroom_session {
 	gboolean started;
 	gboolean stopping;
 	volatile gint hangingup;
+	GList/*cm_audioroom_room* */ *rooms;
 	gint64 destroyed;	/* Time at which this session was marked as destroyed */
 } cm_audioroom_session;
 static GHashTable *sessions;
@@ -852,6 +856,7 @@ void cm_audioroom_create_session(janus_plugin_session *handle, int *error) {
 	session->started = FALSE;
 	session->stopping = FALSE;
 	session->destroyed = 0;
+	session->rooms = NULL;
 	g_atomic_int_set(&session->hangingup, 0);
 	handle->plugin_handle = session;
 	janus_mutex_lock(&sessions_mutex);
@@ -875,6 +880,12 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error) {
 	JANUS_LOG(LOG_VERB, "Removing AudioBridge session...\n");
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
+		/* If we've created the rooms, remove 'em */
+		if(session->rooms){
+			g_list_foreach(session->rooms, cm_audioroom_room_destroy, NULL);
+			session->rooms = NULL;
+		}
+
 		g_hash_table_remove(sessions, handle);
 		cm_audioroom_hangup_media(handle);
 		session->destroyed = janus_get_monotonic_time();
@@ -1150,6 +1161,11 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 				ar->room_id, ar->room_name, ar->sampling_rate, ar->record ? "will" : "will NOT");
 		}
 		janus_mutex_unlock(&rooms_mutex);
+
+		/* Associate room with session */
+		session->rooms = g_list_prepend(session->rooms, audioroom);
+		audioroom->session = session;
+
 		/* Send info back */
 		response = json_object();
 		json_object_set_new(response, "audioroom", json_string("created"));
@@ -1180,48 +1196,14 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_snprintf(error_cause, 512, "No such id (%s)", room_id);
 			goto error;
 		}
-		/* Remove room */
-		g_hash_table_remove(rooms, GUINT_TO_POINTER(room_id));
+		
 		/* Prepare response/notification */
 		response = json_object();
 		json_object_set_new(response, "audioroom", json_string("destroyed"));
-		json_object_set_new(response, "id", json_string(room_id));
-		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
-		/* Notify all participants that the fun is over, and that they'll be kicked */
-		JANUS_LOG(LOG_VERB, "Notifying all participants\n");
-		GHashTableIter iter;
-		gpointer value;
-		g_hash_table_iter_init(&iter, audioroom->participants);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			cm_audioroom_participant *p = value;
-			if(p && p->session) {
-				p->room = NULL;
-				int ret = gateway->push_event(p->session->handle, &cm_audioroom_plugin, NULL, response_text, NULL, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				/* Get rid of queued packets */
-				janus_mutex_lock(&p->qmutex);
-				p->active = FALSE;
-				while(p->inbuf) {
-					GList *first = g_list_first(p->inbuf);
-					cm_audioroom_rtp_relay_packet *pkt = (cm_audioroom_rtp_relay_packet *)first->data;
-					p->inbuf = g_list_remove_link(p->inbuf, first);
-					first = NULL;
-					if(pkt == NULL)
-						continue;
-					if(pkt->data)
-						g_free(pkt->data);
-					pkt->data = NULL;
-					g_free(pkt);
-					pkt = NULL;
-				}
-				janus_mutex_unlock(&p->qmutex);
-			}
-		}
-		g_free(response_text);
-		janus_mutex_unlock(&rooms_mutex);
-		JANUS_LOG(LOG_VERB, "Waiting for the mixer thread to complete...\n");
-		audioroom->destroyed = janus_get_monotonic_time();
-		g_thread_join(audioroom->thread);
+		json_object_set_new(response, "id", json_string(audioroom->room_id));
+
+		cm_audioroom_room_destroy(audioroom, NULL);
+
 		/* Done */
 		JANUS_LOG(LOG_VERB, "Audiobridge room destroyed\n");
 		goto plugin_response;
@@ -2822,4 +2804,59 @@ char *str_replace(char *instr, const char *needle, const char *replace) {
 
 static gboolean trailslash(const char *str) {
 	return str[strlen(str)-1] == '/';
+}
+
+void cm_audioroom_room_destroy(gpointer data, gpointer user_data) {
+	/* TODO @landswellsong maybe some log message too? */
+	cm_audioroom_room *audioroom = (cm_audioroom_room *)data;
+	json_t *response = json_object();
+	json_object_set_new(response, "audioroom", json_string("destroyed"));
+	json_object_set_new(response, "id", json_string(audioroom->room_id));
+	if (!audioroom->destroyed) {
+		/* Remove room */
+		g_hash_table_remove(rooms, GUINT_TO_POINTER(audioroom->room_id));
+		/* Notify all participants that the fun is over, and that they'll be kicked */
+		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
+		JANUS_LOG(LOG_VERB, "Notifying all participants\n");
+		GHashTableIter iter;
+		gpointer value;
+		g_hash_table_iter_init(&iter, audioroom->participants);
+		while (g_hash_table_iter_next(&iter, NULL, &value)) {
+			cm_audioroom_participant *p = value;
+			if(p && p->session) {
+				p->room = NULL;
+				int ret = gateway->push_event(p->session->handle, &cm_audioroom_plugin, NULL, response_text, NULL, NULL);
+				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+				/* Get rid of queued packets */
+				janus_mutex_lock(&p->qmutex);
+				p->active = FALSE;
+				while(p->inbuf) {
+					GList *first = g_list_first(p->inbuf);
+					cm_audioroom_rtp_relay_packet *pkt = (cm_audioroom_rtp_relay_packet *)first->data;
+					p->inbuf = g_list_remove_link(p->inbuf, first);
+					first = NULL;
+					if(pkt == NULL)
+						continue;
+					if(pkt->data)
+						g_free(pkt->data);
+					pkt->data = NULL;
+					g_free(pkt);
+					pkt = NULL;
+				}
+				janus_mutex_unlock(&p->qmutex);
+			}
+		}
+		g_free(response_text);
+
+		if (audioroom->session) {
+			audioroom->session->rooms = g_list_remove_all(audioroom->session->rooms, audioroom);
+			audioroom->session->rooms = NULL;
+		}
+
+		janus_mutex_unlock(&rooms_mutex);
+		JANUS_LOG(LOG_VERB, "Waiting for the mixer thread to complete...\n");
+		audioroom->destroyed = janus_get_monotonic_time();
+		g_thread_join(audioroom->thread);
+	}
+	json_decref(response);
 }
