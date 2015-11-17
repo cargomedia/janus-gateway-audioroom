@@ -22,9 +22,6 @@
  * \verbatim
 [<unique room ID>]
 description = This is my awesome room
-is_private = yes|no (private rooms don't appear when you do a 'list' request)
-secret = <optional password needed for manipulating (e.g. destroying) the room>
-pin = <optional password needed for joining the room>
 sampling_rate = <sampling rate> (e.g., 16000 for wideband mixing)
 record = true|false (whether this room should be recorded, default=false)
 record_file =	/path/to/recording.wav (where to save the recording)
@@ -69,9 +66,6 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	"request" : "create",
 	"id" : <unique numeric ID, optional, chosen by plugin if missing>,
 	"description" : "<pretty name of the room, optional>",
-	"secret" : "<password required to edit/destroy the room, optional>",
-	"pin" : "<password required to join the room, optional>",
-	"is_private" : <true|false, whether the room should appear in a list request>,
 	"sampling" : <sampling rate of the room, optional, 16000 by default>,
 	"record" : <true|false, whether to record the room or not, default false>,
 	"record_file" : "</path/to/the/recording.wav, optional>",
@@ -107,7 +101,6 @@ record_file =	/path/to/recording.wav (where to save the recording)
 {
 	"request" : "destroy",
 	"id" : <unique numeric ID of the room to destroy>,
-	"secret" : "<room secret, mandatory if configured>"
 }
 \endverbatim
  *
@@ -252,7 +245,6 @@ record_file =	/path/to/recording.wav (where to save the recording)
 	"request" : "join",
 	"id" : <numeric ID of the room to join>,
 	"userid" : <unique ID to assign to the participant; optional, assigned by the plugin if missing>,
-	"pin" : "<password required to join the room, if any; optional>",
 	"display" : "<display name to have in the room; optional>",
 	"muted" : <true|false, whether to start unmuted or muted>,
 	"quality" : <0-10, Opus-related complexity to use, lower is higher quality; optional, default is 4>
@@ -504,9 +496,6 @@ void cm_audioroom_message_free(cm_audioroom_message *msg) {
 typedef struct cm_audioroom_room {
 	gchar *room_id;			/* Unique room ID */
 	gchar *room_name;			/* Room description */
-	gchar *room_secret;			/* Secret needed to manipulate (e.g., destroy) this room */
-	gchar *room_pin;			/* Password needed to join this room, if any */
-	gboolean is_private;			/* Whether this room is 'private' (as in hidden) or not */
 	uint32_t sampling_rate;		/* Sampling rate of the mix (e.g., 16000 for wideband; can be 8, 12, 16, 24 or 48kHz) */
 	gboolean record;			/* Whether this room has to be recorded or not */
 	gchar *record_file;			/* Path of the recording file */
@@ -1005,27 +994,6 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_snprintf(error_cause, 512, "Invalid element (description should be a string)");
 			goto error;
 		}
-		json_t *secret = json_object_get(root, "secret");
-		if(secret && !json_is_string(secret)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-			goto error;
-		}
-		json_t *pin = json_object_get(root, "pin");
-		if(pin && !json_is_string(pin)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
-			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
-			goto error;
-		}
-		json_t *is_private = json_object_get(root, "is_private");
-		if(is_private && !json_is_boolean(is_private)) {
-			JANUS_LOG(LOG_ERR, "Invalid element (is_private should be a boolean)\n");
-			error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-			g_snprintf(error_cause, 512, "Invalid value (is_private should be a boolean)");
-			goto error;
-		}
 		json_t *sampling = json_object_get(root, "sampling");
 		if(sampling && (!json_is_integer(sampling) || json_integer_value(sampling) < 0)) {
 			JANUS_LOG(LOG_ERR, "Invalid element (sampling should be a positive integer)\n");
@@ -1098,11 +1066,6 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			goto error;
 		}
 		audioroom->room_name = description;
-		audioroom->is_private = is_private ? json_is_true(is_private) : FALSE;
-		if(secret)
-			audioroom->room_secret = g_strdup(json_string_value(secret));
-		if(pin)
-			audioroom->room_pin = g_strdup(json_string_value(pin));
 		if(sampling)
 			audioroom->sampling_rate = json_integer_value(sampling);
 		else
@@ -1158,11 +1121,8 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		audioroom->destroyed = 0;
 		janus_mutex_init(&audioroom->mutex);
 		g_hash_table_insert(rooms, g_strdup(audioroom->room_id), audioroom);
-		JANUS_LOG(LOG_VERB, "Created audioroom: %s (%s, %s, secret: %s, pin: %s)\n",
-			audioroom->room_id, audioroom->room_name,
-			audioroom->is_private ? "private" : "public",
-			audioroom->room_secret ? audioroom->room_secret : "no secret",
-			audioroom->room_pin ? audioroom->room_pin : "no pin");
+		JANUS_LOG(LOG_VERB, "Created audioroom: %s (%s)\n",
+			audioroom->room_id, audioroom->room_name);
 		/* We need a thread for the mix */
 		GError *error = NULL;
 		audioroom->thread = g_thread_try_new("audioroom mixer thread", &cm_audioroom_mixer_thread, audioroom, &error);
@@ -1173,7 +1133,6 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_snprintf(error_cause, 512, "Got error %d (%s) trying to launch the mixer thread", error->code, error->message ? error->message : "??");
 			g_free(audioroom->room_id);
 			g_free(audioroom->room_name);
-			g_free(audioroom->room_secret);
 			g_free(audioroom->record_file);
 			g_hash_table_destroy(audioroom->participants);
 			g_free(audioroom);
@@ -1221,31 +1180,6 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_snprintf(error_cause, 512, "No such id (%s)", room_id);
 			goto error;
 		}
-		if(audioroom->room_secret) {
-			/* A secret is required for this action */
-			json_t *secret = json_object_get(root, "secret");
-			if(!secret) {
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Missing element (secret)\n");
-				error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-				g_snprintf(error_cause, 512, "Missing element (secret)");
-				goto error;
-			}
-			if(!json_is_string(secret)) {
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Invalid element (secret should be a string)\n");
-				error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-				g_snprintf(error_cause, 512, "Invalid element (secret should be a string)");
-				goto error;
-			}
-			if(!janus_strcmp_const_time(audioroom->room_secret, json_string_value(secret))) {
-				janus_mutex_unlock(&rooms_mutex);
-				JANUS_LOG(LOG_ERR, "Unauthorized (wrong secret)\n");
-				error_code = CM_AUDIOROOM_ERROR_UNAUTHORIZED;
-				g_snprintf(error_cause, 512, "Unauthorized (wrong secret)");
-				goto error;
-			}
-		}
 		/* Remove room */
 		g_hash_table_remove(rooms, GUINT_TO_POINTER(room_id));
 		/* Prepare response/notification */
@@ -1292,7 +1226,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		JANUS_LOG(LOG_VERB, "Audiobridge room destroyed\n");
 		goto plugin_response;
 	} else if(!strcasecmp(request_text, "list")) {
-		/* List all rooms (but private ones) and their details (except for the secret, of course...) */
+		/* List all rooms and their details */
 		json_t *list = json_array();
 		JANUS_LOG(LOG_VERB, "Request for the list for all video rooms\n");
 		janus_mutex_lock(&rooms_mutex);
@@ -1303,11 +1237,6 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			cm_audioroom_room *room = value;
 			if(!room)
 				continue;
-			if(room->is_private) {
-				/* Skip private room */
-				JANUS_LOG(LOG_VERB, "Skipping private room '%s'\n", room->room_name);
-				continue;
-			}
 			json_t *rl = json_object();
 			json_object_set_new(rl, "id", json_string(room->room_id));
 			json_object_set_new(rl, "description", json_string(room->room_name));
@@ -1757,31 +1686,6 @@ static void *cm_audioroom_handler(void *data) {
 				g_snprintf(error_cause, 512, "No such room (%s)", room_id);
 				goto error;
 			}
-			if(audioroom->room_pin) {
-				/* A PIN is required to join this room */
-				json_t *pin = json_object_get(root, "pin");
-				if(!pin) {
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Missing element (pin)\n");
-					error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (pin)");
-					goto error;
-				}
-				if(!json_is_string(pin)) {
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
-					error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
-					goto error;
-				}
-				if(!janus_strcmp_const_time(audioroom->room_pin, json_string_value(pin))) {
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n");
-					error_code = CM_AUDIOROOM_ERROR_UNAUTHORIZED;
-					g_snprintf(error_cause, 512, "Unauthorized (wrong pin)");
-					goto error;
-				}
-			}
 			janus_mutex_unlock(&rooms_mutex);
 			json_t *display = json_object_get(root, "display");
 			if(display && !json_is_string(display)) {
@@ -2121,31 +2025,6 @@ static void *cm_audioroom_handler(void *data) {
 				error_code = CM_AUDIOROOM_ERROR_NO_SUCH_ROOM;
 				g_snprintf(error_cause, 512, "No such room (%s)", room_id);
 				goto error;
-			}
-			if(audioroom->room_pin) {
-				/* A PIN is required to join this room */
-				json_t *pin = json_object_get(root, "pin");
-				if(!pin) {
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Missing element (pin)\n");
-					error_code = CM_AUDIOROOM_ERROR_MISSING_ELEMENT;
-					g_snprintf(error_cause, 512, "Missing element (pin)");
-					goto error;
-				}
-				if(!json_is_string(pin)) {
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Invalid element (pin should be a string)\n");
-					error_code = CM_AUDIOROOM_ERROR_INVALID_ELEMENT;
-					g_snprintf(error_cause, 512, "Invalid element (pin should be a string)");
-					goto error;
-				}
-				if(!janus_strcmp_const_time(audioroom->room_pin, json_string_value(pin))) {
-					janus_mutex_unlock(&rooms_mutex);
-					JANUS_LOG(LOG_ERR, "Unauthorized (wrong pin)\n");
-					error_code = CM_AUDIOROOM_ERROR_UNAUTHORIZED;
-					g_snprintf(error_cause, 512, "Unauthorized (wrong pin)");
-					goto error;
-				}
 			}
 			janus_mutex_unlock(&rooms_mutex);
 			json_t *display = json_object_get(root, "display");
@@ -2728,8 +2607,6 @@ static void *cm_audioroom_mixer_thread(void *data) {
 	/* Free resources */
 	g_free(audioroom->room_id);
 	g_free(audioroom->room_name);
-	g_free(audioroom->room_secret);
-	g_free(audioroom->room_pin);
 	g_free(audioroom->record_file);
 	g_hash_table_destroy(audioroom->participants);
 	g_free(audioroom);
