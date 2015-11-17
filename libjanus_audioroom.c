@@ -1200,7 +1200,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		/* Prepare response/notification */
 		response = json_object();
 		json_object_set_new(response, "audioroom", json_string("destroyed"));
-		json_object_set_new(response, "id", json_string(audioroom->id));
+		json_object_set_new(response, "id", json_string(audioroom->room_id));
 
 		cm_audioroom_room_destroy(audioroom, NULL);
 
@@ -2807,13 +2807,14 @@ static gboolean trailslash(const char *str) {
 }
 
 void cm_audioroom_room_destroy(gpointer data, gpointer user_data) {
-	cm_audioroom_room *room = (cm_audioroom_room *)data;
+	/* TODO @landswellsong maybe some log message too? */
+	cm_audioroom_room *audioroom = (cm_audioroom_room *)data;
 	json_t *response = json_object();
 	json_object_set_new(response, "audioroom", json_string("destroyed"));
-	json_object_set_new(response, "id", json_string(audioroom->id));
+	json_object_set_new(response, "id", json_string(audioroom->room_id));
 	if (!audioroom->destroyed) {
 		/* Remove room */
-		g_hash_table_remove(rooms, GUINT_TO_POINTER(audioroom->id));
+		g_hash_table_remove(rooms, GUINT_TO_POINTER(audioroom->room_id));
 		/* Notify all participants that the fun is over, and that they'll be kicked */
 		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		JANUS_LOG(LOG_VERB, "Notifying all participants\n");
