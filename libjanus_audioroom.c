@@ -510,7 +510,7 @@ typedef struct cm_audioroom_room {
 } cm_audioroom_room;
 static GHashTable *rooms;
 static janus_mutex rooms_mutex;
-void cm_audioroom_room_destroy(cm_audioroom_room* audioroom, json_t *response);
+void cm_audioroom_room_destroy(gpointer data, gpointer user_data);
 
 typedef struct cm_audioroom_session {
 	janus_plugin_session *handle;
@@ -2800,7 +2800,9 @@ static gboolean trailslash(const char *str) {
 	return str[strlen(str)-1] == '/';
 }
 
-void cm_audioroom_room_destroy(cm_audioroom_room* audioroom, json_t *response) {
+void cm_audioroom_room_destroy(gpointer data, gpointer user_data) {
+	cm_audioroom_room *room = (cm_audioroom_room *)data;
+	json_t *response = (json_t *)user_data;
 	if (!audioroom->destroyed) {
 		/* Remove room */
 		g_hash_table_remove(rooms, GUINT_TO_POINTER(audioroom->id));
@@ -2836,6 +2838,12 @@ void cm_audioroom_room_destroy(cm_audioroom_room* audioroom, json_t *response) {
 			}
 		}
 		g_free(response_text);
+
+		if (audioroom->session) {
+			audioroom->session->rooms = g_list_remove_all(audioroom->session->rooms, audioroom);
+			audioroom->session->rooms = NULL;
+		}
+
 		janus_mutex_unlock(&rooms_mutex);
 		JANUS_LOG(LOG_VERB, "Waiting for the mixer thread to complete...\n");
 		audioroom->destroyed = janus_get_monotonic_time();
