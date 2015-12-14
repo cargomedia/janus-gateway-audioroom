@@ -9,7 +9,7 @@ Overview
 This plugin is based on native `janus` streaming plugin and adds additional functionality.
 
 Main extensions:
-- changes type of mountpoint `id` from `integer` to `string`
+- changes type of audio room `id` from `integer` to `string`
 - automatically records the `room` into configurable archives
 - creates job files and store events like new `archive-finished`
 
@@ -62,7 +62,6 @@ It additionally drops support for `record` and `record_file` flag in the favour 
 It responses with default status. 
 
 ```json
-{
 {
 	"audioroom" : "created",
 	"id": "<string>"
