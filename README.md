@@ -6,7 +6,7 @@ janus-gateway-audioroom
 
 Overview
 --------
-This plugin is based on native `janus` streaming plugin and adds additional functionality.
+This plugin is based on native `janus/audiobridge` plugin and adds additional functionality.
 
 Main extensions:
 - changes type of audio room `id` from `integer` to `string`
@@ -43,7 +43,7 @@ Configuration
 
 Synchronous actions
 -------------------
-It supports `destroy`, `list`, `exists`, `listparticipants`, `resetdecoder` actions like native `janus/streaming` plugins with 
+It supports `destroy`, `list`, `exists`, `listparticipants`, `resetdecoder` actions like native `janus/audiobridge` plugins with 
 change that the `id` is of type `string`.
 
 #### `create`
@@ -70,7 +70,7 @@ It responses with default status.
 
 Asychronous actions
 -------------------
-It supports `join`, `configure`, `changeroom`, `leave` actions like native `janus/streaming` plugins with change that the `id` is of type `string`.
+It supports `join`, `configure`, `changeroom`, `leave` actions like native `janus/audiobridge` plugins with change that the `id` is of type `string`.
 
 Job files
 ---------
