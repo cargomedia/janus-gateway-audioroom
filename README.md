@@ -108,6 +108,11 @@ It creates configurable `job-files` with plugin events. It support currently for
 
 The content of dumped file is of type `WAV`.
 
+Testing
+-------
+There is simple testing script placed in `test/tester.py` which allow for triggering basic actions on the plugin. Please find the 
+[test/README](test/README.md) for more details.
+
 Building
 --------
 If you got janus-gateway-audioroom from the git repository, you will first need to run the included `autogen.sh` script 
