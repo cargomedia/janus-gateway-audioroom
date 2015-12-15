@@ -1196,7 +1196,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 			g_snprintf(error_cause, 512, "No such id (%s)", room_id);
 			goto error;
 		}
-		
+
 		/* Prepare response/notification */
 		response = json_object();
 		json_object_set_new(response, "audioroom", json_string("destroyed"));
@@ -1210,7 +1210,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 	} else if(!strcasecmp(request_text, "list")) {
 		/* List all rooms and their details */
 		json_t *list = json_array();
-		JANUS_LOG(LOG_VERB, "Request for the list for all video rooms\n");
+		JANUS_LOG(LOG_VERB, "Request for the list for all audio rooms\n");
 		janus_mutex_lock(&rooms_mutex);
 		GHashTableIter iter;
 		gpointer value;
