@@ -6,11 +6,13 @@ janus-gateway-audioroom
 
 Overview
 --------
-This plugin is based on native `janus/audiobridge` plugin and adds additional functionality.
+This plugin is based on native `janus/audiobridge` plugin and adds additional functionality. 
 
 Main extensions:
-- changes type of audio room `id` from `integer` to `string`
-- automatically records the `room` into configurable archives
+- renames plugin with `janus.plugin.cm.audioroom`
+- renames identification field called `room` with `id`
+- changes type of room `id` from `integer` to `string`
+- automatically records the audio `room` into configurable archives
 - creates job files and store events like new `archive-finished`
 
 Configuration
@@ -54,7 +56,7 @@ It additionally drops support for `record` and `record_file` flag in the favour 
 {
   "id": "<string>",
   "description": "<string>",
-  "sampling": "<string>",
+  "sampling": "<int>",
 }
 ```
 
@@ -66,6 +68,22 @@ It responses with default status.
 	"audioroom" : "created",
 	"id": "<string>"
 }
+```
+
+#### `list`
+It responses with list of current rooms.
+
+**Response**:
+```
+[
+    {
+        "id": "<string>",
+        "sampling_rate": "<int>",
+        "record": "<boolean>",
+        "num_participants": "<int>",
+        "description": "<string>"
+    }
+]
 ```
 
 Asychronous actions
@@ -81,14 +99,14 @@ It creates configurable `job-files` with plugin events. It support currently for
 {
     "data": {
         "id": "<string>",
-        "audio": "<archive_path/recording_pattern>.mjr"
+        "audio": "<archive_path/recording_pattern>"
     },
     "plugin": "janus.plugin.cm.audioroom",
     "event": "archive-finished"
 }
 ```
 
-The content of `mjr` file is of `WAV` type.
+The content of dumped file is of type `WAV`.
 
 Building
 --------
