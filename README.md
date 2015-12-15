@@ -97,7 +97,7 @@ It creates configurable `job-files` with plugin events. It support currently for
 {
     "data": {
         "id": "<string>",
-        "audio": "<archive_path/recording_pattern>"
+        "audio": "<archive_path/recording_pattern>.wav"
     },
     "plugin": "janus.plugin.cm.audioroom",
     "event": "archive-finished"
