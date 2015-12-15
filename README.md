@@ -56,13 +56,11 @@ It additionally drops support for `record` and `record_file` flag in the favour 
 {
   "id": "<string>",
   "description": "<string>",
-  "sampling": "<int>",
+  "sampling": "<int>"
 }
 ```
 
 **Response**:
-It responses with default status. 
-
 ```json
 {
 	"audioroom" : "created",
@@ -74,7 +72,7 @@ It responses with default status.
 It responses with list of current rooms.
 
 **Response**:
-```
+```json
 [
     {
         "id": "<string>",
