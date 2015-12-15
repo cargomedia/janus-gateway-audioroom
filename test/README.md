@@ -16,36 +16,36 @@ For streaming you might need `gstreamer` installed.
 
 When you run the script, you will be dropped to Python3 interpreter with helper functions.
 
-# `greet()`
+### `greet()`
 
 Run this first to establish a session.
 
-# `attach(plugin_name)`
+### `attach(plugin_name)`
 
 Attach to the plugin, name is optional, cm.audioroom is default.
 
-# `keepalive()`
+### `keepalive()`
 
 Refresh the session timeout.
 
-# `list()`
+### `list()`
 
 Run this after `attach()`, lists the mountpoints.
 
-# `create(id)`
+### `create(id)`
 
 Create a mountpoint `id`, default is `Ababagalamaga`.
 
-# `destroy(id)`
+### `destroy(id)`
 
 Destroy the mountpoint by `id`, default is `Ababagalamaga`.
 
-# `stream()`
+### `stream()`
 
 Create streaming streams, params means maximal and minimal bitrate and can be omitted with
 default values. *NOT IMPLEMENTED*
 
-# `unstream()`
+### `unstream()`
 
 Stops streaming. *Don't forget* to do this when you stop session. It's *not* done automatically. Manual kill:
 ```
@@ -53,6 +53,6 @@ killall gst-launch-1.0
 ```
 *NOT IMPLEMENTED*
 
-# `session()`
+### `session()`
 
 Runs `greet()`, `attach()` and `create()`
