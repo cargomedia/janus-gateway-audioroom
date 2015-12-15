@@ -108,7 +108,7 @@ The content of dumped file is of type `WAV`.
 
 Testing
 -------
-There is simple testing script placed in `test/tester.py` which allow for triggering basic actions on the plugin. Please find the 
+There is a simple testing script placed in the `test/tester.py` which allow for triggering basic actions on the plugin. Please find the 
 [test/README](test/README.md) for more details.
 
 Building
