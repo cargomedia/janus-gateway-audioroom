@@ -2397,7 +2397,7 @@ static void *cm_audioroom_mixer_thread(void *data) {
 	if(audioroom->record) {
 		char filename[255];
 		if(audioroom->record_file) {
-			g_snprintf(filename, 255, trailslash(cm_audioroom_settings.archive_path)? "%s%s" : "%s/%s",
+			g_snprintf(filename, 255, trailslash(cm_audioroom_settings.archive_path)? "%s%s.wav" : "%s/%s.wav",
 				cm_audioroom_settings.archive_path, audioroom->record_file);
 		}
 		else
@@ -2573,7 +2573,7 @@ static void *cm_audioroom_mixer_thread(void *data) {
 
 		char filename[255];
 		if(audioroom->record_file)
-			g_snprintf(filename, 255, "%s/%s", cm_audioroom_settings.archive_path, audioroom->record_file);
+			g_snprintf(filename, 255, "%s/%s.wav", cm_audioroom_settings.archive_path, audioroom->record_file);
 		else
 			g_snprintf(filename, 255, "/tmp/janus-audioroom-%s.wav", audioroom->room_id);
 		/* FIXME: @landswellsong should we report failures? */
@@ -2788,7 +2788,7 @@ void cm_audioroom_store_event(json_t* response, const char *event_name) {
 		cm_audioroom_settings.job_path, fname);
 	g_free(fname);
 
-	if (!json_dump_file(envelope, fullpath, JSON_INDENT(4)))
+	if (json_dump_file(envelope, fullpath, JSON_INDENT(4)))
 		JANUS_LOG(LOG_ERR, "Error saving JSON to %s", fullpath);
 
 	json_decref(envelope);
