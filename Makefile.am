@@ -1,5 +1,5 @@
 ACLOCAL_AMFLAGS = -I m4
-CFLAGS = $(shell pkg-config --cflags glib-2.0) -Ijanus-gateway
+CFLAGS = $(shell pkg-config --cflags glib-2.0)
 CXXFLAGS = $(CFLAGS)
 lib_LTLIBRARIES = libjanus_audioroom.la
 libjanus_audioroom_la_SOURCES = libjanus_audioroom.c

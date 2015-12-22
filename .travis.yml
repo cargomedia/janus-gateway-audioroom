@@ -19,7 +19,8 @@ before_install:
   - cd ..
 
 script:
+  - ./get-janus-headers.sh
   - ./autogen.sh
-  - ./configure --prefix=/opt/janus
+  - ./configure --prefix=/usr/
   - make
   - sudo make install
