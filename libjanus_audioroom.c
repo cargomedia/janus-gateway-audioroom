@@ -2789,7 +2789,7 @@ void cm_audioroom_store_event(json_t* response, const char *event_name) {
 	g_free(fname);
 
 	if (json_dump_file(envelope, fullpath, JSON_INDENT(4)))
-		JANUS_LOG(LOG_ERR, "Error saving JSON to %s", fullpath);
+		JANUS_LOG(LOG_ERR, "Error saving JSON to %s\n", fullpath);
 
 	json_decref(envelope);
 }
