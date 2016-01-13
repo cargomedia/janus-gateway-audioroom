@@ -1493,6 +1493,26 @@ static void *cm_audioroom_handler(void *data) {
 			const gchar *room_id = json_string_value(room);
 			janus_mutex_lock(&rooms_mutex);
 			cm_audioroom_room *audioroom = g_hash_table_lookup(rooms, room_id);
+
+			if(audioroom == NULL) {
+				janus_mutex_unlock(&rooms_mutex);
+				json_t *root = json_object();
+				json_object_set_new(root, "id", json_string(room_id));
+				json_object_set_new(root, "sampling", json_integer(48000));
+				json_t *response = NULL;
+
+				response = cm_audioroom_room_create(root, &error_code, error_cause, response);
+				if(!response) {
+					JANUS_LOG(LOG_ERR, "Cannot automatically create room (%s)\n", room_id);
+					error_code = CM_AUDIOROOM_ERROR_NO_SUCH_ROOM;
+					g_snprintf(error_cause, 512, "Cannot automatically create room (%s)", room_id);
+					goto error;
+				}
+
+				janus_mutex_lock(&rooms_mutex);
+				audioroom = g_hash_table_lookup(rooms, room_id);
+			}
+
 			if(audioroom == NULL) {
 				janus_mutex_unlock(&rooms_mutex);
 				JANUS_LOG(LOG_ERR, "No such room (%s)\n", room_id);
