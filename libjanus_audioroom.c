@@ -888,20 +888,23 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error) {
 		//	session->rooms = NULL;
 		//}
 
-		// Keep reference for session audioroom
+		// Removing audioroom if last participant is going down
 		cm_audioroom_participant *participant = (cm_audioroom_participant *)session->participant;
-		cm_audioroom_room *audioroom = participant->room;
+		if (participant) {
+			cm_audioroom_room *audioroom = participant->room;
+			if (audioroom) {
+				if (g_hash_table_size(audioroom->participants) == 1) {
+					JANUS_LOG(LOG_INFO, "Auto removal of room (%s), no more participants\n", audioroom->room_id);
+					cm_audioroom_room_destroy(audioroom, NULL);
+				}
+			}
+		}
 
 		g_hash_table_remove(sessions, handle);
 		cm_audioroom_hangup_media(handle);
 		session->destroyed = janus_get_monotonic_time();
 		/* Cleaning up and removing the session is done in a lazy way */
 		old_sessions = g_list_append(old_sessions, session);
-
-		// Remove audioroom if not more participants
-		if (g_hash_table_size(audioroom->participants) == 0) {
-			cm_audioroom_room_destroy(audioroom, NULL);
-		}
 	}
 	janus_mutex_unlock(&sessions_mutex);
 
