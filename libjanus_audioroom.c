@@ -882,10 +882,11 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error) {
 	janus_mutex_lock(&sessions_mutex);
 	if(!session->destroyed) {
 		/* If we've created the rooms, remove 'em */
-		if(session->rooms){
-			g_list_foreach(session->rooms, cm_audioroom_room_destroy, NULL);
-			session->rooms = NULL;
-		}
+		/* There is no more master connection for room */
+		//if(session->rooms){
+		//	g_list_foreach(session->rooms, cm_audioroom_room_destroy, NULL);
+		//	session->rooms = NULL;
+		//}
 
 		g_hash_table_remove(sessions, handle);
 		cm_audioroom_hangup_media(handle);
@@ -2861,8 +2862,9 @@ json_t *cm_audioroom_room_create(json_t *root, int *error_code, char *error_caus
 	janus_mutex_unlock(&rooms_mutex);
 
 	/* Associate room with session */
-//	session->rooms = g_list_prepend(session->rooms, audioroom);
-//	audioroom->session = session;
+	/* There is no more master connection for room */
+	//session->rooms = g_list_prepend(session->rooms, audioroom);
+	//audioroom->session = session;
 
 	/* Send info back */
 	response = json_object();
