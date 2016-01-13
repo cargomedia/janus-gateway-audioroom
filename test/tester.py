@@ -67,6 +67,17 @@ def create(id=mountpoint_id):
                 }
             }, not session_id or not handle_id)
 
+def join(id=mountpoint_id):
+    janus_cmd({ "janus": "message",
+                "transaction": "tester.py",
+                "session_id": session_id,
+                "handle_id": handle_id,
+                "body": {
+                    "request": "join",
+                    "id": id
+                }
+            }, not session_id or not handle_id)
+
 def destroy():
     janus_cmd({ "janus": "message",
                 "transaction": "tester.py",
