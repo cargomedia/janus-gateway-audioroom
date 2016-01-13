@@ -902,7 +902,7 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error) {
 		old_sessions = g_list_append(old_sessions, session);
 
 		if (audioroom) {
-		F	if (g_hash_table_size(audioroom->participants) == 0) {
+			if (g_hash_table_size(audioroom->participants) == 0) {
 				JANUS_LOG(LOG_INFO, "Auto removal of room (%s), no more participants\n", audioroom->room_id);
 				cm_audioroom_room_destroy(audioroom, NULL);
 			}
