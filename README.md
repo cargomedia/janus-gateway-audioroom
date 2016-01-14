@@ -14,6 +14,9 @@ Main extensions:
 - changes type of room `id` from `integer` to `string`
 - automatically records the audio `room` into configurable archives
 - creates job files and store events like new `archive-finished`
+- it drops support for `create` endpoint
+- it creates rooms transparently for `join` and `changeroom` endpoint
+- it removes `room` if last participant leaves (for session destroy or `changeroom`)
 
 Configuration
 -------------
@@ -96,7 +99,8 @@ It creates `room` if does not exist. The `room` gets default values with `sampli
 ```
 
 #### `changeroom`
-It creates `room` if does not exist. The `room` gets default values with `sampling` of `48000`.
+It creates `room` if does not exist. The `room` gets default values with `sampling` of `48000`. The `oldroom` is automatically removed if gets 
+empty (no more participants) after change.
 
 **Request**:
 ```json
