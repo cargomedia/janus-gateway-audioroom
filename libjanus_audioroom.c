@@ -34,11 +34,9 @@ record_file =	/path/to/recording.wav (where to save the recording)
  * (invalid JSON, invalid request) which will always result in a
  * synchronous error response even for asynchronous requests.
  *
- * \c create , \c destroy , \c exists, \c list, \c listparticipants
+ * \c destroy , \c exists, \c list, \c listparticipants
  * and \c resetdecoder are synchronous requests, which means you'll
  * get a response directly within the context of the transaction.
- * \c create allows you to create a new audio conference bridge
- * dynamically, as an alternative to using the configuration file;
  * \c destroy removes an audio conference bridge and destroys it, kicking
  * all the users out as part of the process; \c exists allows you to
  * check whether a specific audio conference exists; \c list
@@ -51,16 +49,14 @@ record_file =	/path/to/recording.wav (where to save the recording)
  * The \c join , \c configure , \c changeroom and \c leave requests
  * instead are all asynchronous, which means you'll get a notification
  * about their success or failure in an event. \c join allows you to
- * join a specific audio conference bridge; \c configure can be used
- * to modify some of the participation settings (e.g., mute/unmute);
+ * join a specific audio conference bridge and create new room if
+ * does not exist; \c configure can be used to modify some of the
+ * participation settings (e.g., mute/unmute);
  * \c changeroom can be used to leave the current room and move to a
  * different one without having to tear down the PeerConnection and
- * recreate it again (useful for sidebars and "waiting rooms"); finally,
- * \c leave allows you to leave an audio conference bridge for good.
- *
- * \c create can be used to create a new audio room, and has to be
- * formatted as follows:
- *
+ * recreate it again (useful for sidebars and "waiting rooms"). It will
+ * create new room if does not exist; finally, \c leave allows you to
+ * leave an audio conference bridge for good.
  *
  * An error instead (and the same applies to all other requests, so this
  * won't be repeated) would provide both an error code and a more verbose
@@ -990,7 +986,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 		g_snprintf(error_cause, 512, "Invalid element (request should be a string)");
 		goto error;
 	}
-	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
+	/* Some requests ('destroy', 'exists', 'list') can be handled synchronously */
 	const char *request_text = json_string_value(request);
 	if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing audioroom room\n");
