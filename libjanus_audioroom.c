@@ -2073,6 +2073,15 @@ static void *cm_audioroom_handler(void *data) {
 				json_object_set_new(pl, "muted", json_string(p->muted ? "true" : "false"));
 				json_array_append_new(list, pl);
 			}
+
+			/* If we change the room and old room stay empty then let's remove that room */
+			if (old_audioroom) {
+				if (g_hash_table_size(old_audioroom->participants) == 0) {
+					JANUS_LOG(LOG_INFO, "Auto removal of room (%s), no more participants\n", old_audioroom->room_id);
+					cm_audioroom_room_destroy(old_audioroom, NULL);
+				}
+			}
+
 			event = json_object();
 			json_object_set_new(event, "audioroom", json_string("roomchanged"));
 			json_object_set_new(event, "id", json_string(audioroom->room_id));
