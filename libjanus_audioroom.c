@@ -472,7 +472,8 @@ void cm_audioroom_message_free(cm_audioroom_message *msg) {
 /* Forward declaration */
 typedef struct cm_audioroom_session cm_audioroom_session;
 typedef struct cm_audioroom_room {
-	gchar *room_id;			/* Unique room ID */
+	gchar *room_id;			/* Unique creator room ID */
+	gchar *room_uid;			/* Unique janus room ID */
 	gchar *room_name;			/* Room description */
 	uint32_t sampling_rate;		/* Sampling rate of the mix (e.g., 16000 for wideband; can be 8, 12, 16, 24 or 48kHz) */
 	gboolean record;			/* Whether this room has to be recorded or not */
@@ -906,6 +907,7 @@ char *cm_audioroom_query_session(janus_plugin_session *handle) {
 	if(participant) {
 		cm_audioroom_room *room = participant->room;
 		json_object_set_new(info, "id", room ? json_string(room->room_id) : NULL);
+		json_object_set_new(info, "uid", room ? json_string(room->room_uid) : NULL);
 		json_object_set_new(info, "userid", json_integer(participant->user_id));
 		if(participant->display)
 			json_object_set_new(info, "display", json_string(participant->display));
@@ -1038,6 +1040,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 				continue;
 			json_t *rl = json_object();
 			json_object_set_new(rl, "id", json_string(room->room_id));
+			json_object_set_new(rl, "uid", json_string(room->room_uid));
 			json_object_set_new(rl, "description", json_string(room->room_name));
 			json_object_set_new(rl, "sampling_rate", json_integer(room->sampling_rate));
 			json_object_set_new(rl, "record", json_string(room->record ? "true" : "false"));
@@ -1717,6 +1720,7 @@ static void *cm_audioroom_handler(void *data) {
 			event = json_object();
 			json_object_set_new(event, "audioroom", json_string("joined"));
 			json_object_set_new(event, "id", json_string(audioroom->room_id));
+			json_object_set_new(event, "uid", json_string(audioroom->room_uid));
 			json_object_set_new(event, "userid", json_integer(user_id));
 			json_object_set_new(event, "participants", list);
 			janus_mutex_unlock(&audioroom->mutex);
@@ -2072,6 +2076,7 @@ static void *cm_audioroom_handler(void *data) {
 			event = json_object();
 			json_object_set_new(event, "audioroom", json_string("roomchanged"));
 			json_object_set_new(event, "id", json_string(audioroom->room_id));
+			json_object_set_new(event, "uid", json_string(audioroom->room_uid));
 			json_object_set_new(event, "userid", json_integer(user_id));
 			json_object_set_new(event, "participants", list);
 			janus_mutex_unlock(&audioroom->mutex);
@@ -2435,6 +2440,7 @@ static void *cm_audioroom_mixer_thread(void *data) {
 		/* FIXME: @landswellsong should we report failures? */
 		json_t *response = json_object();
 		json_object_set_new(response, "id", json_string(audioroom->room_id));
+		json_object_set_new(response, "uid", json_string(audioroom->room_uid));
 		json_object_set_new(response, "audio", json_string(filename));
 
 		cm_audioroom_store_event(response, "archive-finished");
@@ -2784,6 +2790,17 @@ json_t *cm_audioroom_room_create(json_t *root, int *error_code, char *error_caus
 		return NULL;
 	}
 	audioroom->room_id = g_strdup(room_id);
+
+	/* Generating an MD5 for UID */
+	guint64 ml_md5 = janus_get_monotonic_time();
+	guint32 r_md5 = g_random_int();
+
+	char buf[512];
+	g_snprintf(buf, 512, "%lu%llu%s", (long unsigned)r_md5, (long long unsigned)ml_md5, CM_AUDIOROOM_PACKAGE);
+	gchar *md5 = g_compute_checksum_for_string(G_CHECKSUM_MD5, buf, -1);
+
+	audioroom->room_uid = g_strdup(md5);
+
 	char *description = NULL;
 	if(desc != NULL && strlen(json_string_value(desc)) > 0) {
 		description = g_strdup(json_string_value(desc));
@@ -2894,6 +2911,7 @@ json_t *cm_audioroom_room_create(json_t *root, int *error_code, char *error_caus
 	response = json_object();
 	json_object_set_new(response, "audioroom", json_string("created"));
 	json_object_set_new(response, "id", json_string(audioroom->room_id));
+	json_object_set_new(response, "uid", json_string(audioroom->room_uid));
 
 	return response;
 }
