@@ -32,7 +32,7 @@ Refresh the session timeout.
 
 Run this after `attach()`, lists the mountpoints.
 
-### `create(id)`
+### `join(id)`
 
 Create a mountpoint `id`, default is `Ababagalamaga`.
 
