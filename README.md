@@ -60,6 +60,7 @@ It responses with list of current rooms.
 [
     {
         "id": "<string>",
+        "uid": "<string>",
         "sampling_rate": "<int>",
         "record": "<boolean>",
         "num_participants": "<int>",
@@ -72,8 +73,49 @@ Asychronous actions
 -------------------
 It supports `join`, `configure`, `changeroom`, `leave` actions like native `janus/audiobridge` plugins with change that the `id` is of type `string`.
 
-#### `join` and `changeroom`
+#### `join`
 It creates `room` if does not exist. The `room` gets default values with `sampling` of `48000`. 
+
+**Request**:
+```json
+{
+    "request": "join",
+    "id": "<string>"
+}
+```
+
+**Response**:
+```json
+{
+    "audioroom": "joined",
+    "id": "<string>",
+    "uid": "<string>",
+    "userid": "<int>",
+    "participants": []
+}
+```
+
+#### `changeroom`
+It creates `room` if does not exist. The `room` gets default values with `sampling` of `48000`.
+
+**Request**:
+```json
+{
+    "request": "changeroom",
+    "id": "<string>"
+}
+```
+
+**Response**:
+```json
+{
+    "audioroom": "roomchanged",
+    "id": "<string>",
+    "uid": "<string>",
+    "userid": "<int>",
+    "participants": []
+}
+```
 
 Job files
 ---------
@@ -84,6 +126,7 @@ It creates configurable `job-files` with plugin events. It support currently for
 {
     "data": {
         "id": "<string>",
+        "uid": "<string>",
         "audio": "<archive_path/recording_pattern>.wav"
     },
     "plugin": "janus.plugin.cm.audioroom",
