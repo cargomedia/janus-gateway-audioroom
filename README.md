@@ -49,24 +49,8 @@ It supports `destroy`, `list`, `exists`, `listparticipants`, `resetdecoder` acti
 change that the `id` is of type `string`.
 
 #### `create`
-It additionally drops support for `record` and `record_file` flag in the favour of recording all `rooms` by default.
-
-**Request**:
-```json
-{
-  "id": "<string>",
-  "description": "<string>",
-  "sampling": "<int>"
-}
-```
-
-**Response**:
-```json
-{
-	"audioroom" : "created",
-	"id": "<string>"
-}
-```
+It drops support for `create` and introduce creation of the room with asynchronous action `join` and `changeroom`. It records all `rooms` by default. 
+The `room` is created with `sampling` of `48000` by default.
 
 #### `list`
 It responses with list of current rooms.
@@ -87,6 +71,9 @@ It responses with list of current rooms.
 Asychronous actions
 -------------------
 It supports `join`, `configure`, `changeroom`, `leave` actions like native `janus/audiobridge` plugins with change that the `id` is of type `string`.
+
+#### `join` and `changeroom`
+It creates `room` if does not exist. The `room` gets default values with `sampling` of `48000`. 
 
 Job files
 ---------
