@@ -61,25 +61,6 @@ record_file =	/path/to/recording.wav (where to save the recording)
  * \c create can be used to create a new audio room, and has to be
  * formatted as follows:
  *
-\verbatim
-{
-	"request" : "create",
-	"id" : <unique numeric ID, optional, chosen by plugin if missing>,
-	"description" : "<pretty name of the room, optional>",
-	"sampling" : <sampling rate of the room, optional, 16000 by default>,
-	"record" : <true|false, whether to record the room or not, default false>,
-	"record_file" : "</path/to/the/recording.wav, optional>",
-}
-\endverbatim
- *
- * A successful creation procedure will result in a \c created response:
- *
-\verbatim
-{
-	"audioroom" : "created",
-	"id" : <unique numeric ID>
-}
-\endverbatim
  *
  * An error instead (and the same applies to all other requests, so this
  * won't be repeated) would provide both an error code and a more verbose
@@ -1011,13 +992,7 @@ struct janus_plugin_result *cm_audioroom_handle_message(janus_plugin_session *ha
 	}
 	/* Some requests ('create', 'destroy', 'exists', 'list') can be handled synchronously */
 	const char *request_text = json_string_value(request);
-	if(!strcasecmp(request_text, "create")) {
-		response = cm_audioroom_room_create(root, &error_code, error_cause, response);
-		if(!response) {
-			goto error;
-		}
-		goto plugin_response;
-	} else if(!strcasecmp(request_text, "destroy")) {
+	if(!strcasecmp(request_text, "destroy")) {
 		JANUS_LOG(LOG_VERB, "Attempt to destroy an existing audioroom room\n");
 		json_t *room = json_object_get(root, "id");
 		if(!room) {
