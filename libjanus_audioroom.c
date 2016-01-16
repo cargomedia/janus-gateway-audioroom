@@ -383,6 +383,7 @@ static struct {
 	const char *job_pattern;
 	const char *archive_path;
 	const char *recording_pattern;
+	gboolean recording_enabled;
 } cm_audioroom_settings;
 
 
@@ -695,33 +696,53 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 	cm_audioroom_settings.job_pattern =  g_strdup("job-#{md5}");
 	cm_audioroom_settings.archive_path =  g_strdup("/tmp/recordings");
 	cm_audioroom_settings.recording_pattern = g_strdup("rec-#{id}-#{time}-#{type}");
+	cm_audioroom_settings.recording_enabled = TRUE;
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
-		const char *inames [] = {
-		 "job_path",
-		 "job_pattern",
-		 "archive_path",
-		 "recording_pattern",
-		};
-		const char **ivars [] = {
-			&cm_audioroom_settings.job_path,
-			&cm_audioroom_settings.job_pattern,
-			&cm_audioroom_settings.archive_path,
-			&cm_audioroom_settings.recording_pattern,
-		};
+		/* Boolean */
+		{
+			const char *inames [] = {
+				"recording_enabled"
+			};
+			guint *ivars [] = {
+				&cm_audioroom_settings.recording_enabled,
+			};
 
-		_foreach(i, ivars) {
-			janus_config_item *itm = janus_config_get_item_drilldown(config, "general", inames[i]);
-			if (itm && itm->value) {
-				g_free((gpointer)*ivars[i]);
-				*ivars[i] = g_strdup(itm->value);
+			_foreach(i, ivars) {
+				janus_config_item *itm = janus_config_get_item_drilldown(config, "general", inames[i]);
+				if (itm && itm->value) {
+					*ivars[i] = janus_is_true(itm->value);
+				}
 			}
 		}
-		/* FIXME @landswellsong free the g_strdup in de-init() */
-		/* Done */
-		janus_config_destroy(config);
-		config = NULL;
+		/* Strings */
+		{
+			const char *inames [] = {
+			 "job_path",
+			 "job_pattern",
+			 "archive_path",
+			 "recording_pattern"
+			};
+			const char **ivars [] = {
+				&cm_audioroom_settings.job_path,
+				&cm_audioroom_settings.job_pattern,
+				&cm_audioroom_settings.archive_path,
+				&cm_audioroom_settings.recording_pattern
+			};
+
+			_foreach(i, ivars) {
+				janus_config_item *itm = janus_config_get_item_drilldown(config, "general", inames[i]);
+				if (itm && itm->value) {
+					g_free((gpointer)*ivars[i]);
+					*ivars[i] = g_strdup(itm->value);
+				}
+			}
+			/* FIXME @landswellsong free the g_strdup in de-init() */
+			/* Done */
+			janus_config_destroy(config);
+			config = NULL;
+		}
 	}
 
 	/* Show available rooms */
@@ -2846,7 +2867,7 @@ json_t *cm_audioroom_room_create(json_t *root, int *error_code, char *error_caus
 			return NULL;
 	}
 	/* FIXME @landswellsong always recording right now, filename is configuration option */
-	audioroom->record = TRUE;
+	audioroom->record = cm_audioroom_settings.recording_enabled;
 	char *fname = g_strdup(cm_audioroom_settings.recording_pattern);
 
 	guint64 ml = janus_get_monotonic_time();
