@@ -866,7 +866,7 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error) {
 		//	session->rooms = NULL;
 		//}
 
-	 cm_audioroom_participant *participant = (cm_audioroom_participant *)session->participant;
+		cm_audioroom_participant *participant = (cm_audioroom_participant *)session->participant;
 		if (participant) {
 				cm_audioroom_room *audioroom = participant->room;
 				if (audioroom && !audioroom->destroy && !audioroom->destroyed) {
