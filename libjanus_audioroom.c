@@ -887,6 +887,12 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error) {
 		//	session->rooms = NULL;
 		//}
 
+		g_hash_table_remove(sessions, handle);
+		cm_audioroom_hangup_media(handle);
+		session->destroyed = janus_get_monotonic_time();
+		/* Cleaning up and removing the session is done in a lazy way */
+		old_sessions = g_list_append(old_sessions, session);
+
 		cm_audioroom_participant *participant = (cm_audioroom_participant *)session->participant;
 		if (participant) {
 				cm_audioroom_room *audioroom = participant->room;
@@ -894,19 +900,13 @@ void cm_audioroom_destroy_session(janus_plugin_session *handle, int *error) {
 						janus_mutex_lock(&audioroom->mutex);
 						int participant_count = g_hash_table_size(audioroom->participants);
 						janus_mutex_unlock(&audioroom->mutex);
-						if (participant_count <= 1) {
-								JANUS_LOG(LOG_INFO, "Auto removal of room (%s), no more participants\n", audioroom->room_id);
-								janus_mutex_lock(&rooms_mutex);
-								cm_audioroom_room_destroy(audioroom, NULL);
+						if (participant_count == 0) {
+							JANUS_LOG(LOG_INFO, "Auto removal of room (%s), no more participants\n", audioroom->room_id);
+							janus_mutex_lock(&rooms_mutex);
+							cm_audioroom_room_destroy(audioroom, NULL);
 						}
 				}
 		}
-
-		g_hash_table_remove(sessions, handle);
-		cm_audioroom_hangup_media(handle);
-		session->destroyed = janus_get_monotonic_time();
-		/* Cleaning up and removing the session is done in a lazy way */
-		old_sessions = g_list_append(old_sessions, session);
 	}
 	janus_mutex_unlock(&sessions_mutex);
 
@@ -2101,7 +2101,7 @@ static void *cm_audioroom_handler(void *data) {
 					janus_mutex_lock(&old_audioroom->mutex);
 					int participant_count = g_hash_table_size(old_audioroom->participants);
 					janus_mutex_unlock(&old_audioroom->mutex);
-					if (participant_count < 1) {
+					if (participant_count == 0) {
 							JANUS_LOG(LOG_INFO, "Auto removal of room (%s), no more participants\n", old_audioroom->room_id);
 							janus_mutex_lock(&rooms_mutex);
 							cm_audioroom_room_destroy(old_audioroom, NULL);
