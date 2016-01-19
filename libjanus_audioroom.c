@@ -1374,17 +1374,19 @@ void cm_audioroom_hangup_media(janus_plugin_session *handle) {
 		char *leaving_text = json_dumps(event, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		json_decref(event);
 		g_hash_table_remove(audioroom->participants, GUINT_TO_POINTER(participant->user_id));
-		GHashTableIter iter;
-		gpointer value;
-		g_hash_table_iter_init(&iter, audioroom->participants);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			cm_audioroom_participant *p = value;
-			if(p == participant) {
-				continue;	/* Skip the leaving participant itself */
+		if (audioroom->participants) {
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, audioroom->participants);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				cm_audioroom_participant *p = value;
+				if(p == participant) {
+					continue;	/* Skip the leaving participant itself */
+				}
+				JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
+				int ret = gateway->push_event(p->session->handle, &cm_audioroom_plugin, NULL, leaving_text, NULL, NULL);
+				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 			}
-			JANUS_LOG(LOG_VERB, "Notifying participant %"SCNu64" (%s)\n", p->user_id, p->display ? p->display : "??");
-			int ret = gateway->push_event(p->session->handle, &cm_audioroom_plugin, NULL, leaving_text, NULL, NULL);
-			JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
 		}
 		g_free(leaving_text);
 	}
@@ -2715,32 +2717,34 @@ void cm_audioroom_room_destroy(gpointer data, gpointer user_data) {
 		/* Notify all participants that the fun is over, and that they'll be kicked */
 		char *response_text = json_dumps(response, JSON_INDENT(3) | JSON_PRESERVE_ORDER);
 		JANUS_LOG(LOG_VERB, "Notifying all participants\n");
-		GHashTableIter iter;
-		gpointer value;
-		g_hash_table_iter_init(&iter, audioroom->participants);
-		while (g_hash_table_iter_next(&iter, NULL, &value)) {
-			cm_audioroom_participant *p = value;
-			if(p && p->session) {
-				p->room = NULL;
-				int ret = gateway->push_event(p->session->handle, &cm_audioroom_plugin, NULL, response_text, NULL, NULL);
-				JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
-				/* Get rid of queued packets */
-				janus_mutex_lock(&p->qmutex);
-				p->active = FALSE;
-				while(p->inbuf) {
-					GList *first = g_list_first(p->inbuf);
-					cm_audioroom_rtp_relay_packet *pkt = (cm_audioroom_rtp_relay_packet *)first->data;
-					p->inbuf = g_list_remove_link(p->inbuf, first);
-					first = NULL;
-					if(pkt == NULL)
-						continue;
-					if(pkt->data)
-						g_free(pkt->data);
-					pkt->data = NULL;
-					g_free(pkt);
-					pkt = NULL;
+		if (audioroom->participants) {
+			GHashTableIter iter;
+			gpointer value;
+			g_hash_table_iter_init(&iter, audioroom->participants);
+			while (g_hash_table_iter_next(&iter, NULL, &value)) {
+				cm_audioroom_participant *p = value;
+				if(p && p->session) {
+					p->room = NULL;
+					int ret = gateway->push_event(p->session->handle, &cm_audioroom_plugin, NULL, response_text, NULL, NULL);
+					JANUS_LOG(LOG_VERB, "  >> %d (%s)\n", ret, janus_get_api_error(ret));
+					/* Get rid of queued packets */
+					janus_mutex_lock(&p->qmutex);
+					p->active = FALSE;
+					while(p->inbuf) {
+						GList *first = g_list_first(p->inbuf);
+						cm_audioroom_rtp_relay_packet *pkt = (cm_audioroom_rtp_relay_packet *)first->data;
+						p->inbuf = g_list_remove_link(p->inbuf, first);
+						first = NULL;
+						if(pkt == NULL)
+							continue;
+						if(pkt->data)
+							g_free(pkt->data);
+						pkt->data = NULL;
+						g_free(pkt);
+						pkt = NULL;
+					}
+					janus_mutex_unlock(&p->qmutex);
 				}
-				janus_mutex_unlock(&p->qmutex);
 			}
 		}
 		g_free(response_text);
