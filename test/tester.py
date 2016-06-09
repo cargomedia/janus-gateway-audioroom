@@ -91,4 +91,4 @@ def session():
     greet()
     attach()
     destroy()
-    create()
+    join()

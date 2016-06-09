@@ -2206,6 +2206,14 @@ static void *cm_audioroom_handler(void *data) {
 				participant->opus_pt,			/* Opus payload type */
 				participant->opus_pt, 			/* Opus payload type and room sampling rate */
 				participant->room->sampling_rate);
+
+			if (g_strrstr(msg->sdp, "a=recvonly") != NULL) {
+				g_strlcat(sdp, "a=sendonly\r\n", 1024);
+			} else if (g_strrstr(msg->sdp, "a=sendonly") != NULL) {
+				g_strlcat(sdp, "a=recvonly\r\n", 1024);
+			}
+			/* sendrecv case will be processed by default */
+
 			/* Did the peer negotiate video? */
 			if(strstr(msg->sdp, "m=video") != NULL) {
 				/* If so, reject it */
