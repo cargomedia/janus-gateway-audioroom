@@ -384,6 +384,7 @@ static struct {
 	const char *archive_path;
 	const char *recording_pattern;
 	gboolean recording_enabled;
+	guint mixer_prebuffering;
 } cm_audioroom_settings;
 
 
@@ -697,6 +698,7 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 	cm_audioroom_settings.archive_path =  g_strdup("/tmp/recordings");
 	cm_audioroom_settings.recording_pattern = g_strdup("rec-#{id}-#{time}-#{type}");
 	cm_audioroom_settings.recording_enabled = TRUE;
+	cm_audioroom_settings.mixer_prebuffering = DEFAULT_PREBUFFERING;
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
@@ -742,6 +744,24 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 			/* Done */
 			janus_config_destroy(config);
 			config = NULL;
+		}
+		/* Integers */
+		{
+			const char *inames [] = {
+				"mixer_prebuffering"
+			};
+			guint *ivars [] = {
+				&cm_rtpbcast_settings.mixer_prebuffering
+			};
+
+			_foreach(i, ivars) {
+				janus_config_item *itm = janus_config_get_item_drilldown(config, "general", inames[i]);
+				if (itm && itm->value) {
+					guint res = g_ascii_strtoull(itm->value, NULL, 10);
+					if (res != 0)
+						*ivars[i] = res;
+				}
+			}
 		}
 	}
 
