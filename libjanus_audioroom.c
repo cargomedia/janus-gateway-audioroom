@@ -751,7 +751,7 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 				"mixer_prebuffering"
 			};
 			guint *ivars [] = {
-				&cm_rtpbcast_settings.mixer_prebuffering
+				&cm_audioroom_settings.mixer_prebuffering
 			};
 
 			_foreach(i, ivars) {
