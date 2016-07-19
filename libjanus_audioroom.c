@@ -1327,7 +1327,8 @@ void cm_audioroom_incoming_rtp(janus_plugin_session *handle, int video, char *bu
 		janus_mutex_lock(&participant->qmutex);
 		/* Insert packets sorting by sequence number */
 		participant->inbuf = g_list_insert_sorted(participant->inbuf, pkt, &cm_audioroom_rtp_sort);
-		if (cm_audioroom_settings.mixer_prebuffering > 0) {
+		if(cm_audioroom_settings.mixer_prebuffering > 0) {
+			JANUS_LOG(LOG_INFO, "mixer_prebuffering %d\n", cm_audioroom_settings.mixer_prebuffering);
 			if(participant->prebuffering) {
 				/* Still pre-buffering: do we have enough packets now? */
 				if(g_list_length(participant->inbuf) == cm_audioroom_settings.mixer_prebuffering) {
