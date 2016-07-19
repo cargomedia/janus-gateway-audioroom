@@ -718,6 +718,22 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 				}
 			}
 		}
+		/* Integers */
+		{
+			const char *inames [] = {
+				"mixer_prebuffering"
+			};
+			guint *ivars [] = {
+				&cm_audioroom_settings.mixer_prebuffering
+			};
+
+			_foreach(i, ivars) {
+				janus_config_item *itm = janus_config_get_item_drilldown(config, "general", inames[i]);
+				if (itm && itm->value) {
+					*ivars[i] = g_ascii_strtoull(itm->value, NULL, 10);
+				}
+			}
+		}
 		/* Strings */
 		{
 			const char *inames [] = {
@@ -744,24 +760,6 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 			/* Done */
 			janus_config_destroy(config);
 			config = NULL;
-		}
-		/* Integers */
-		{
-			const char *inames [] = {
-				"mixer_prebuffering"
-			};
-			guint *ivars [] = {
-				&cm_audioroom_settings.mixer_prebuffering
-			};
-
-			_foreach(i, ivars) {
-				janus_config_item *itm = janus_config_get_item_drilldown(config, "general", inames[i]);
-				if (itm && itm->value) {
-					guint res = g_ascii_strtoull(itm->value, NULL, 10);
-					if (res != 0)
-						*ivars[i] = res;
-				}
-			}
 		}
 	}
 
@@ -1360,8 +1358,10 @@ void cm_audioroom_incoming_rtp(janus_plugin_session *handle, int video, char *bu
 				}
 			}
 		} else {
-			JANUS_LOG(LOG_VERB, "Prebuffering is disabled!\n");
-			participant->prebuffering = FALSE;
+			if(participant->prebuffering) {
+				JANUS_LOG(LOG_VERB, "Prebuffering is disabled!\n");
+				participant->prebuffering = FALSE;
+			}
 		}
 		janus_mutex_unlock(&participant->qmutex);
 	}
