@@ -24,3 +24,10 @@
 ; #{time}     is timestamp (guint64)
 ; #{type}     is type ("audio", "video" or "thumb" string)
 ; recording_pattern = rec-#{id}-#{time}-#{type}
+
+; The mixer pre-buffering allows to define the time window of audio
+; RTP source to be queued before it is mixed with another RTP sources.
+; By default is set to 6 packets what gives 240ms of time tolerance for
+; incoming packets. If set to 0 then pre-buffering is disabled, as well as
+; dropping of outdated packets is disabled.
+; mixer_prebuffering = 6

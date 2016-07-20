@@ -384,6 +384,7 @@ static struct {
 	const char *archive_path;
 	const char *recording_pattern;
 	gboolean recording_enabled;
+	guint mixer_prebuffering;
 } cm_audioroom_settings;
 
 
@@ -697,6 +698,7 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 	cm_audioroom_settings.archive_path =  g_strdup("/tmp/recordings");
 	cm_audioroom_settings.recording_pattern = g_strdup("rec-#{id}-#{time}-#{type}");
 	cm_audioroom_settings.recording_enabled = TRUE;
+	cm_audioroom_settings.mixer_prebuffering = DEFAULT_PREBUFFERING;
 
 	/* Parse configuration to populate the rooms list */
 	if(config != NULL) {
@@ -713,6 +715,22 @@ int cm_audioroom_init(janus_callbacks *callback, const char *config_path) {
 				janus_config_item *itm = janus_config_get_item_drilldown(config, "general", inames[i]);
 				if (itm && itm->value) {
 					*ivars[i] = janus_is_true(itm->value);
+				}
+			}
+		}
+		/* Integers */
+		{
+			const char *inames [] = {
+				"mixer_prebuffering"
+			};
+			guint *ivars [] = {
+				&cm_audioroom_settings.mixer_prebuffering
+			};
+
+			_foreach(i, ivars) {
+				janus_config_item *itm = janus_config_get_item_drilldown(config, "general", inames[i]);
+				if (itm && itm->value) {
+					*ivars[i] = g_ascii_strtoull(itm->value, NULL, 10);
 				}
 			}
 		}
@@ -1309,33 +1327,40 @@ void cm_audioroom_incoming_rtp(janus_plugin_session *handle, int video, char *bu
 		janus_mutex_lock(&participant->qmutex);
 		/* Insert packets sorting by sequence number */
 		participant->inbuf = g_list_insert_sorted(participant->inbuf, pkt, &cm_audioroom_rtp_sort);
-		if(participant->prebuffering) {
-			/* Still pre-buffering: do we have enough packets now? */
-			if(g_list_length(participant->inbuf) == DEFAULT_PREBUFFERING) {
-				participant->prebuffering = FALSE;
-				JANUS_LOG(LOG_VERB, "Prebuffering done! Finally adding the user to the mix\n");
+		if(cm_audioroom_settings.mixer_prebuffering > 0) {
+			if(participant->prebuffering) {
+				/* Still pre-buffering: do we have enough packets now? */
+				if(g_list_length(participant->inbuf) == cm_audioroom_settings.mixer_prebuffering) {
+					participant->prebuffering = FALSE;
+					JANUS_LOG(LOG_VERB, "Prebuffering done! Finally adding the user to the mix\n");
+				} else {
+					JANUS_LOG(LOG_VERB, "Still prebuffering (got %d packets), not adding the user to the mix yet\n", g_list_length(participant->inbuf));
+				}
 			} else {
-				JANUS_LOG(LOG_VERB, "Still prebuffering (got %d packets), not adding the user to the mix yet\n", g_list_length(participant->inbuf));
+				/* Make sure we're not queueing too many packets: if so, get rid of the older ones */
+				if(g_list_length(participant->inbuf) >= cm_audioroom_settings.mixer_prebuffering*2) {
+					JANUS_LOG(LOG_WARN, "Too many packets in queue (%d > %d), removing older ones\n",
+						g_list_length(participant->inbuf), cm_audioroom_settings.mixer_prebuffering*2);
+					while(g_list_length(participant->inbuf) > cm_audioroom_settings.mixer_prebuffering*2) {
+						/* Remove this packet: it's too old */
+						GList *first = g_list_first(participant->inbuf);
+						cm_audioroom_rtp_relay_packet *pkt = (cm_audioroom_rtp_relay_packet *)first->data;
+						participant->inbuf = g_list_remove_link(participant->inbuf, first);
+						first = NULL;
+						if(pkt == NULL)
+							continue;
+						if(pkt->data)
+							g_free(pkt->data);
+						pkt->data = NULL;
+						g_free(pkt);
+						pkt = NULL;
+					}
+				}
 			}
 		} else {
-			/* Make sure we're not queueing too many packets: if so, get rid of the older ones */
-			if(g_list_length(participant->inbuf) >= DEFAULT_PREBUFFERING*2) {
-				JANUS_LOG(LOG_WARN, "Too many packets in queue (%d > %d), removing older ones\n",
-					g_list_length(participant->inbuf), DEFAULT_PREBUFFERING*2);
-				while(g_list_length(participant->inbuf) > DEFAULT_PREBUFFERING*2) {
-					/* Remove this packet: it's too old */
-					GList *first = g_list_first(participant->inbuf);
-					cm_audioroom_rtp_relay_packet *pkt = (cm_audioroom_rtp_relay_packet *)first->data;
-					participant->inbuf = g_list_remove_link(participant->inbuf, first);
-					first = NULL;
-					if(pkt == NULL)
-						continue;
-					if(pkt->data)
-						g_free(pkt->data);
-					pkt->data = NULL;
-					g_free(pkt);
-					pkt = NULL;
-				}
+			if(participant->prebuffering) {
+				JANUS_LOG(LOG_VERB, "Prebuffering is disabled!\n");
+				participant->prebuffering = FALSE;
 			}
 		}
 		janus_mutex_unlock(&participant->qmutex);
